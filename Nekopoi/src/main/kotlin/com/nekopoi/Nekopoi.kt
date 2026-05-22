@@ -57,44 +57,69 @@ class Nekopoi : MainAPI() {
     // CloudStream / fork apps, giving the user an "advanced browse" UX without
     // needing fork-specific filter APIs.
     //
-    //  Group 1 — Format
-    //  Group 2 — Status / freshness
-    //  Group 3 — Popular tags (genre filters)
+    //  Group 1 — "Terbaru" first so latest episodes are immediately visible
+    //  Group 2 — Format / Type categories (matches the site's main nav)
+    //  Group 3 — Status / freshness sub-categories
+    //  Group 4 — Popular genres pulled from the official /genre-list/ page.
+    //            NOTE: Theme NekoPoi v2.x uses /genres/<slug>/ (plural) for
+    //            genre archives — the legacy /tag/<slug>/ paths return empty
+    //            results, which is why earlier rows looked broken.
     override val mainPage = mainPageOf(
-        // Format
+        // Latest first
+        "$mainUrl/" to "Terbaru",
+        // Format / Type
         "$mainUrl/category/hentai/" to "Hentai",
         "$mainUrl/category/jav/" to "JAV",
         "$mainUrl/category/3d-hentai/" to "3D Hentai",
+        "$mainUrl/category/2d-animation/" to "2D Animation",
         "$mainUrl/category/jav-cosplay/" to "JAV Cosplay",
         // Status & freshness
         "$mainUrl/category/sub-indo/" to "Sub Indo",
         "$mainUrl/category/uncensored/" to "Uncensored",
         "$mainUrl/category/censored/" to "Censored",
-        "$mainUrl/" to "Terbaru",
-        // Popular genre tags (acts as quick filter rows)
-        "$mainUrl/tag/big-tits/" to "Tag: Big Tits",
-        "$mainUrl/tag/big-boobs/" to "Tag: Big Boobs",
-        "$mainUrl/tag/schoolgirl/" to "Tag: Schoolgirl",
-        "$mainUrl/tag/romance/" to "Tag: Romance",
-        "$mainUrl/tag/vanilla/" to "Tag: Vanilla",
-        "$mainUrl/tag/threesome/" to "Tag: Threesome",
-        "$mainUrl/tag/maid/" to "Tag: Maid",
-        "$mainUrl/tag/yuri/" to "Tag: Yuri",
-        "$mainUrl/tag/ntr/" to "Tag: NTR",
-        "$mainUrl/tag/anal/" to "Tag: Anal",
+        // Popular genres (curated from /genre-list/)
+        "$mainUrl/genres/big-oppai/" to "Genre: Big Oppai",
+        "$mainUrl/genres/schoolgirl/" to "Genre: Schoolgirl",
+        "$mainUrl/genres/vanilla/" to "Genre: Vanilla",
+        "$mainUrl/genres/romance/" to "Genre: Romance",
+        "$mainUrl/genres/threesome/" to "Genre: Threesome",
+        "$mainUrl/genres/maid/" to "Genre: Maid",
+        "$mainUrl/genres/yuri/" to "Genre: Yuri",
+        "$mainUrl/genres/netorare/" to "Genre: Netorare",
+        "$mainUrl/genres/anal/" to "Genre: Anal",
+        "$mainUrl/genres/harem/" to "Genre: Harem",
+        "$mainUrl/genres/milf/" to "Genre: MILF",
+        "$mainUrl/genres/incest/" to "Genre: Incest",
+        "$mainUrl/genres/futanari/" to "Genre: Futanari",
+        "$mainUrl/genres/loli/" to "Genre: Loli",
+        "$mainUrl/genres/uncensored/" to "Genre: Uncensored",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val document = fetch.get("${request.data}/page/$page").document
-        // Theme NekoPoi v2.x renders both category and search listings inside
-        // div.nk-search-results > ul > li. The previous "div.result ul li"
-        // wrapper no longer exists in the rendered HTML.
-        val home = document.select("div.nk-search-results ul li").mapNotNull {
-            it.toSearchResult()
-        }
+        // Build paginated URL. Trailing slash on request.data is normalized so
+        // both "$mainUrl/" (Terbaru) and "$mainUrl/category/.../" produce a
+        // valid "/page/N/" URL without double slashes.
+        val base = request.data.trimEnd('/')
+        val document = fetch.get("$base/page/$page/").document
+        // Theme NekoPoi v2.x renders TWO different listing layouts:
+        //   1. Category & genre archives -> div.nk-search-results > ul > li
+        //      with .nk-search-item cards (poster + genres + synopsis).
+        //   2. Homepage "Episode Terbaru" feed -> div#nk-episode-grid with
+        //      div.nk-post-card children (thumb + title + date). The /page/N/
+        //      pagination on the homepage uses this same layout, which is why
+        //      the previous selector returned an empty Terbaru row.
+        // Try the search-results layout first; fall back to the post-card
+        // grid so the Terbaru row is populated.
+        val home = document.select("div.nk-search-results ul li")
+            .mapNotNull { it.toSearchResult() }
+            .ifEmpty {
+                document.select("div.nk-post-card").mapNotNull {
+                    it.toPostCardResult()
+                }
+            }
         return newHomePageResponse(
             list = HomePageList(
                 name = request.name,
@@ -142,14 +167,51 @@ class Nekopoi : MainAPI() {
         }
     }
 
+    /**
+     * Parses an "Episode Terbaru" card from the homepage feed (and its
+     * /page/N/ pagination). Markup looks like:
+     *
+     *   <div class="nk-post-card">
+     *     <div class="nk-post-thumb">
+     *       <div class="nk-thumb-crop" style="background-image: url('...')"></div>
+     *     </div>
+     *     <div class="nk-post-meta">
+     *       <h2><a href="...">Title</a></h2>
+     *       <span><span class="dashicons ..."></span>Date</span>
+     *     </div>
+     *   </div>
+     *
+     * Different from .nk-search-item (no genre badges/synopsis), so it needs
+     * its own parser instead of being shoehorned into toSearchResult().
+     */
+    private fun Element.toPostCardResult(): AnimeSearchResponse? {
+        val link = this.selectFirst("div.nk-post-meta h2 a")
+            ?: this.selectFirst("a[href]")
+            ?: return null
+        val title = link.text().trim().ifBlank { return null }
+        val href = getProperAnimeLink(link.attr("href"))
+        val thumbStyle = this.selectFirst(
+            "div.nk-thumb-crop, div.nk-post-thumb"
+        )?.attr("style").orEmpty()
+        val poster = fixUrlNull(
+            backgroundImageRegex.find(thumbStyle)?.groupValues?.getOrNull(1)
+                ?: this.selectFirst("img")?.attr("src")
+        )
+        return newAnimeSearchResponse(title, href, TvType.NSFW) {
+            this.posterUrl = poster
+        }
+    }
+
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
         // Smart search dengan prefix filter:
-        //   "tag:vanilla schoolgirl"     -> /tag/vanilla/?s=schoolgirl
+        //   "genre:vanilla"              -> /genres/vanilla/   (alias: tag:)
         //   "category:jav big tits"      -> /category/jav/?s=big+tits
         //   "jav:cosplay"  / "hentai:"   -> shortcut ke kategori populer
         // Tanpa prefix, fallback ke WordPress search standar.
+        // Note: /genres/<slug>/ archives tidak meng-honor query string ?s=,
+        // jadi prefix genre/tag mengabaikan residue dan langsung load arsip.
         val (path, residue) = parseSearchPrefix(query)
         val encoded = java.net.URLEncoder.encode(residue, "UTF-8")
         val target = if (path != null) {
@@ -170,11 +232,15 @@ class Nekopoi : MainAPI() {
         val rest = trimmed.substring(colon + 1).trim()
         val slug = rest.lowercase().replace(' ', '-').ifBlank { null }
         return when (prefix) {
-            "tag" -> (slug?.let { "/tag/$it/" } to "")
+            // Both "genre:" and the legacy "tag:" map to /genres/<slug>/.
+            // The site dropped /tag/ archives in theme v2.x; keeping the alias
+            // means existing user shortcuts keep working.
+            "genre", "genres", "tag" -> (slug?.let { "/genres/$it/" } to "")
             "category", "cat" -> (slug?.let { "/category/$it/" } to "")
             "jav" -> "/category/jav/" to rest
             "hentai" -> "/category/hentai/" to rest
             "3d" -> "/category/3d-hentai/" to rest
+            "2d" -> "/category/2d-animation/" to rest
             "cosplay" -> "/category/jav-cosplay/" to rest
             "sub", "subindo" -> "/category/sub-indo/" to rest
             "uncensored" -> "/category/uncensored/" to rest
