@@ -36,6 +36,11 @@ class Nekopoi : MainAPI() {
         )
         const val mirroredHost = "https://www.mirrored.to"
 
+        // Theme NekoPoi v2.x stores poster/thumbnail URLs as inline CSS, e.g.
+        //   style="background-image: url('https://nekopoi.care/.../poster.jpg')"
+        // This regex extracts the URL regardless of single, double, or no quotes.
+        val backgroundImageRegex = Regex("""url\((?:['"])?(.*?)(?:['"])?\)""")
+
         fun getStatus(t: String?): ShowStatus {
             return when (t) {
                 "Completed" -> ShowStatus.Completed
@@ -58,7 +63,10 @@ class Nekopoi : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val document = fetch.get("${request.data}/page/$page").document
-        val home = document.select("div.result ul li").mapNotNull {
+        // Theme NekoPoi v2.x renders both category and search listings inside
+        // div.nk-search-results > ul > li. The previous "div.result ul li"
+        // wrapper no longer exists in the rendered HTML.
+        val home = document.select("div.nk-search-results ul li").mapNotNull {
             it.toSearchResult()
         }
         return newHomePageResponse(
@@ -82,49 +90,114 @@ class Nekopoi : MainAPI() {
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
-        val title = this.selectFirst("h2 a")?.text()?.trim() ?: return null
-        val href = getProperAnimeLink(this.selectFirst("a")?.attr("href") ?: return null)
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
-        val epNum = this.selectFirst("i.dot")?.text()?.filter { it.isDigit() }?.toIntOrNull()
+        // The link is now <a class="nk-search-item"> with the title inside
+        // .nk-search-info h2 (h2 alone still works as a fallback).
+        val link = this.selectFirst("a.nk-search-item") ?: this.selectFirst("a[href]") ?: return null
+        val title = link.selectFirst(".nk-search-info h2")?.text()?.trim()
+            ?: link.selectFirst("h2")?.text()?.trim()
+            ?: link.attr("title").takeIf { it.isNotBlank() }
+            ?: return null
+        val href = getProperAnimeLink(link.attr("href"))
+
+        // Posters are no longer plain <img>; they are CSS background-images on
+        // div.nk-search-thumb (and similar containers used in related lists).
+        val styleAttr = this.selectFirst(
+            "div.nk-search-thumb, div.nk-related-thumb-crop, div.ltd"
+        )?.attr("style").orEmpty()
+        val posterFromStyle = backgroundImageRegex.find(styleAttr)?.groupValues?.getOrNull(1)
+        val posterUrl = fixUrlNull(posterFromStyle ?: link.selectFirst("img")?.attr("src"))
+
+        // Episode count now appears as .nk-episode-badge on related episode cards.
+        val epNum = this.selectFirst("i.dot, .nk-episode-badge")
+            ?.text()?.filter { it.isDigit() }?.toIntOrNull()
         return newAnimeSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
             addSub(epNum)
         }
-
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return fetch.get("$mainUrl/search/$query").document.select("div.result ul li")
-            .mapNotNull {
-                it.toSearchResult()
-            }
+        // The previous /search/<query> path 404s on the new theme; the site
+        // now uses standard WordPress query parameters (?s=...&post_type=anime),
+        // exactly like the search form on the page.
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        return fetch.get("$mainUrl/?s=$encoded&post_type=anime")
+            .document
+            .select("div.nk-search-results ul li")
+            .mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = fetch.get(url).document
 
-        val title = document.selectFirst("span.desc b, div.eroinfo h1")?.text()?.trim() ?: ""
-        val poster = fixUrlNull(document.selectFirst("div.imgdesc img, div.thm img")?.attr("src"))
-        val table = document.select("div.listinfo ul, div.konten")
-        val tags =
-            table.select("li:contains(Genres) a").map { it.text() }.takeIf { it.isNotEmpty() }
-                ?: table.select("p:contains(Genre)").text().substringAfter(":").split(",")
-                    .map { it.trim() }
-        val year =
-            document.selectFirst("li:contains(Tayang)")?.text()?.substringAfterLast(",")
-                ?.filter { it.isDigit() }?.toIntOrNull()
-        val status = getStatus(
-            document.selectFirst("li:contains(Status)")?.text()?.substringAfter(":")?.trim()
-        )
-        val duration = document.selectFirst("li:contains(Durasi)")?.text()?.substringAfterLast(":")
-            ?.filter { it.isDigit() }?.toIntOrNull()
-        val description = document.selectFirst("span.desc p")?.text()
+        // Title:
+        //  * Series page (/hentai/<slug>/) -> .nk-section-header h1 inside .nk-series-info
+        //    is the localized "Informasi Anime" header, so we read the synopsis <b>
+        //    or fall back to the page <title>.
+        //  * Episode page                  -> div.nk-post-header h1
+        val title = document.selectFirst("div.nk-post-header h1")?.text()?.trim()
+            ?: document.selectFirst("span.nk-series-synopsis b")?.text()?.trim()
+            ?: document.selectFirst("h1")?.text()?.trim()
+            ?: ""
 
-        val episodes = document.select("div.episodelist ul li").mapNotNull {
-            val name = it.selectFirst("a")?.text()
-            val link = fixUrlNull(it.selectFirst("a")?.attr("href")) ?: return@mapNotNull null
-            newEpisode(link){ this.name = name}
-        }.takeIf { it.isNotEmpty() } ?: listOf(newEpisode(url){ this.name = title})
+        // Poster:
+        //  * Series page  -> div.nk-series-poster (background-image)
+        //  * Episode page -> div.nk-featured-img img
+        //  * Fallback     -> og:image meta tag, which the new theme always sets.
+        val seriesPosterStyle = document.selectFirst("div.nk-series-poster")?.attr("style").orEmpty()
+        val poster = fixUrlNull(
+            backgroundImageRegex.find(seriesPosterStyle)?.groupValues?.getOrNull(1)
+                ?: document.selectFirst("div.nk-featured-img img")?.attr("src")
+                ?: document.selectFirst("meta[property=og:image]")?.attr("content")
+        )
+
+        // Genres / synopsis live inside div.konten on episode pages and inside
+        // .nk-series-detail / .nk-series-meta-list on series pages.
+        val infoBlock = document.select("div.konten, div.nk-series-detail, div.nk-series-meta-list")
+        val tags = infoBlock.select("p:contains(Genre), p:contains(Genres)")
+            .firstOrNull()?.text()
+            ?.substringAfter(":")
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?: emptyList()
+
+        // The new theme uses <b>Tayang</b>, <b>Status</b>, <b>Durasi</b> labels
+        // inside <p> tags rather than <li>. The old <li> selectors still work
+        // as a fallback for legacy markup, hence the comma-separated lists.
+        val year = (infoBlock.select("p:contains(Tayang), li:contains(Tayang)")
+            .firstOrNull()?.text() ?: "")
+            .substringAfterLast(",")
+            .filter { it.isDigit() }
+            .toIntOrNull()
+        val status = getStatus(
+            (infoBlock.select("p:contains(Status), li:contains(Status)")
+                .firstOrNull()?.text() ?: "")
+                .substringAfter(":").trim()
+        )
+        val duration = (infoBlock.select("p:contains(Durasi), li:contains(Durasi)")
+            .firstOrNull()?.text() ?: "")
+            .substringAfterLast(":")
+            .filter { it.isDigit() }
+            .toIntOrNull()
+
+        // Synopsis: prefer the explicit series-synopsis span on series pages;
+        // otherwise grab the first non-empty paragraph in div.konten.
+        val description = document.selectFirst("span.nk-series-synopsis")?.text()?.trim()
+            ?: document.select("div.konten p")
+                .map { it.text().trim() }
+                .firstOrNull { it.isNotEmpty() && !it.startsWith("Genre", true) }
+
+        // Episodes:
+        //  * Series page  -> a.nk-episode-card (the new grid layout)
+        //  * Episode page -> falls back to a single self-link so playback still works.
+        val episodes = document.select("a.nk-episode-card").mapNotNull { card ->
+            val link = fixUrlNull(card.attr("href")) ?: return@mapNotNull null
+            val name = card.selectFirst(".nk-episode-badge")?.text()?.trim()
+                ?: card.selectFirst(".nk-episode-card-info")?.text()?.trim()
+                ?: card.text().trim()
+            newEpisode(link) { this.name = name }
+        }.takeIf { it.isNotEmpty() } ?: listOf(newEpisode(url) { this.name = title })
 
         return newAnimeLoadResponse(title, url, TvType.NSFW) {
             engName = title
@@ -149,46 +222,57 @@ class Nekopoi : MainAPI() {
 
         runAllAsync(
                 {
-                    res.select("div#show-stream iframe").amap { iframe ->
-                        loadExtractor(iframe.attr("src"), "$mainUrl/", subtitleCallback, callback)
-                    }
+                    // Streaming iframes: the old "div#show-stream iframe" container is
+                    // gone. The new theme renders each tab as a separate
+                    // <div class="nk-player-frame"><iframe src="..."></iframe></div>
+                    // inside #nk-player. We grab every iframe with a non-empty src.
+                    res.select("#nk-player div.nk-player-frame iframe[src], div.nk-player-frame iframe[src]")
+                        .amap { iframe ->
+                            loadExtractor(iframe.attr("src"), "$mainUrl/", subtitleCallback, callback)
+                        }
                 },
                 {
-                    res.select("div.boxdownload div.liner").map { ele ->
-						getIndexQuality(ele.select("div.name").text()) to
-							ele.selectFirst("a:contains(ouo)")?.attr("href")
-					}.filter { it.first != Qualities.P360.value }.map { (quality, ouoUrl) ->
-						val bypassedAds = bypassMirrored(bypassOuo(ouoUrl))
-						bypassedAds.amap ads@{ adsLink ->
-							coroutineScope {
-								loadExtractor(
+                    // Download grid:
+                    //   <div class="nk-download-row">
+                    //     <div class="nk-download-name">Title [720p]</div>
+                    //     <div class="nk-download-links"><a href="ouo.io/...">Mirror</a> ...</div>
+                    //   </div>
+                    // Replaces the old div.boxdownload > div.liner / div.name structure.
+                    res.select("div.nk-download-row").map { ele ->
+                        getIndexQuality(ele.selectFirst("div.nk-download-name")?.text()) to
+                            ele.selectFirst("div.nk-download-links a:contains(ouo)")?.attr("href")
+                    }.filter { it.first != Qualities.P360.value }.map { (quality, ouoUrl) ->
+                        val bypassedAds = bypassMirrored(bypassOuo(ouoUrl))
+                        bypassedAds.amap ads@{ adsLink ->
+                            coroutineScope {
+                                loadExtractor(
                                     fixEmbed(adsLink).toString(),
-									"$mainUrl/",
-									subtitleCallback,
-								) { link ->
-									launch(Dispatchers.IO) {
-										callback.invoke(
-											newExtractorLink(
-												link.name,
-												link.name,
-												link.url,
-												link.type
-											) {
-												this.referer = link.referer
-												this.quality = if (link.type == ExtractorLinkType.M3U8) {
-													link.quality
-												} else {
-													quality
-												}
-												this.headers = link.headers
-												this.extractorData = link.extractorData
-											}
-										)
-									}
-								}
-							}
-						}
-					}
+                                    "$mainUrl/",
+                                    subtitleCallback,
+                                ) { link ->
+                                    launch(Dispatchers.IO) {
+                                        callback.invoke(
+                                            newExtractorLink(
+                                                link.name,
+                                                link.name,
+                                                link.url,
+                                                link.type
+                                            ) {
+                                                this.referer = link.referer
+                                                this.quality = if (link.type == ExtractorLinkType.M3U8) {
+                                                    link.quality
+                                                } else {
+                                                    quality
+                                                }
+                                                this.headers = link.headers
+                                                this.extractorData = link.extractorData
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             )
 
