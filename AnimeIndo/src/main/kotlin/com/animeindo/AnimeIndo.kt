@@ -11,7 +11,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class AnimeIndo : MainAPI() {
-    override var mainUrl = "https://animeindo.xyz"
+    override var mainUrl = "https://gomunime.top"
     override var name = "AnimeIndo"
     override val hasMainPage = true
     override var lang = "id"

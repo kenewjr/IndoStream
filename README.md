@@ -1,68 +1,74 @@
 # IndoStream: Kumpulan Ekstensi CloudStream untuk Konten Indonesia
 
-IndoStream adalah kumpulan ekstensi CloudStream yang berfokus pada penyediaan konten streaming dari berbagai sumber di Indonesia. Repositori ini berisi ekstensi yang memperluas fungsionalitas aplikasi CloudStream, memungkinkan pengguna untuk menikmati berbagai macam film, serial, dan anime dari situs-situs populer di Indonesia.
+IndoStream adalah kumpulan ekstensi CloudStream yang berfokus pada penyediaan konten streaming dari berbagai sumber di Indonesia. Repositori ini berisi ekstensi yang memperluas fungsionalitas aplikasi CloudStream serta fork yang kompatibel (mis. **Kototoro**), memungkinkan pengguna menikmati film, serial, dan anime dari situs-situs populer di Indonesia.
 
 ## Fitur Utama
 
-*   **Beragam Sumber Konten:** Akses konten dari berbagai situs streaming populer di Indonesia.
-*   **Mudah Digunakan:** Instalasi dan penggunaan yang sederhana melalui aplikasi CloudStream.
-*   **Pembaruan Reguler:** Ekstensi diperbarui secara berkala untuk memastikan kompatibilitas dan ketersediaan konten.
-*   **Fokus pada Konten Indonesia:** Kumpulan ekstensi ini berfokus pada konten yang relevan dengan pengguna di Indonesia.
+* **Beragam Sumber Konten** — Akses konten dari berbagai situs streaming populer di Indonesia.
+* **Mudah Digunakan** — Instalasi sederhana melalui aplikasi CloudStream / Kototoro.
+* **Pembaruan Reguler** — Domain situs di-track dan diperbarui begitu sumber upstream pindah.
+* **Kompatibel Kototoro** — Repo ini langsung bisa dipakai di aplikasi Kototoro lewat menu *Add CloudStream Repository*.
 
 ## Daftar Ekstensi
 
-Berikut adalah daftar ekstensi yang tersedia di repositori IndoStream:
+Status terakhir diverifikasi: **2026-05-22**.
 
-| Nama Ekstensi | Status                            |
-| ------------- | --------------------------------- |
-| Animasu       | Jalan, gambar poster tidak muncul |
-| Animindo      | Error                             |
-| Animesail     | Jalan                             |
-| Anoboy        | Error                             |
-| Dramaid       | Link Error. Oppadrama jalan       |
-| DramaSerial   | Error                             |
-| Dubbindo      | Jalan                             |
-| Dutamovie     | Butuh VPN                         |
-| Funmovieslix  | Jalan                             |
-| Gomov         | Butuh VPN, Link Error             |
-| Gomunime      | Down                              |
-| Idlix         | Link Error                        |
-| IndoTV        | Jalan                             |
-| Kuramanime    | Butuh VPN, Link Error             |
-| Kuronime      | Link Error                        |
-| LayarKaca     | Jalan                             |
-| Minioppai     | Error                             |
-| Nekopoi       | Butuh VPN                         |
-| Neonime       | Error                             |
-| Ngefilm       | Error                             |
-| Nimegami      | Jalan, perlu perbaikan menu       |
-| Nodrakorid    | Error tidak bisa diinstal         |
-| NontonAnimeID | Down                              |
-| Oploverz      | Down                              |
-| Otakudesu     | Jalan                             |
-| Pencurimovie  | Jalan                             |
-| Pusatfilm     | The Operation is not implemented  |
-| Raveeflix     | Down                              |
-| Rebahin       | Butuh VPN, Link Error             |
-| Samehadaku    | Butuh VPN                         |
-| UseeTv        | Error                             |
+| Nama Ekstensi | Domain Aktif | Status |
+| ------------- | ------------ | ------ |
+| Animasu       | v1.animasu.top                | Jalan |
+| AnimeIndo     | gomunime.top                  | Jalan |
+| AnimeSail     | 154.26.137.28                 | Jalan |
+| Anoboy        | (perlu domain baru)           | Tidak resolve |
+| Dramaid       | dramaid.online                | Jalan |
+| DramaSerial   | tv44.juragan.film             | Jalan |
+| Dubbindo      | dubbindo.site                 | Jalan |
+| Dutamovie     | 167.99.77.142                 | Jalan |
+| Kuramanime    | v18.kuramanime.ing            | Jalan |
+| Kuronime      | kuronime.net                  | Jalan |
+| LayarKaca     | tv1.lk21official.love         | Jalan |
+| Minioppai     | minioppai.org                 | Down (sumber mati) |
+| Nekopoi       | nekopoi.care                  | Jalan, smart-search & rekomendasi |
+| Neonime       | otakupoi.org/neonime          | Jalan |
+| Ngefilm       | new35.ngefilm.site            | Jalan |
+| Nimegami      | nimegami.id                   | Jalan |
+| Oploverz      | vip.oploverz.ltd              | Jalan |
+| Otakudesu     | otakudesu.blog                | Jalan |
+| Pencurimovie  | ww11.pencurimovie.sbs         | Jalan |
+| Pusatfilm     | v3.pusatfilm21info.com        | Jalan |
+| Rebahin       | rebahin.ink                   | Jalan |
+| Samehadaku    | v2.samehadaku.how             | Jalan |
+
+> Ekstensi yang dihapus dari repo ini karena domain mati / tidak terawat: Funmovieslix, Gomov, Gomunime, Idlix, IndoTV, Nodrakorid, NontonAnimeID, Raveeflix.
 
 ## Cara Menggunakan
 
-1.  Buka aplikasi CloudStream.
-2.  Buka menu "Ekstensi".
-3.  Klik tombol "Tambahkan Repositori".
-4.  Masukkan URL repositori IndoStream: https://raw.githubusercontent.com/TeKuma25/IndoStream/builds/repo.json
-5.  Klik "Tambahkan".
-6.  Ekstensi yang tersedia akan muncul di daftar.
-7.  Pilih ekstensi yang ingin Anda instal dan klik "Instal".
+### CloudStream
+
+1. Buka aplikasi CloudStream.
+2. Buka menu **Ekstensi**.
+3. Klik **Tambahkan Repositori**.
+4. Masukkan URL repositori IndoStream:
+   ```
+   https://raw.githubusercontent.com/kenewjr/IndoStream/builds/repo.json
+   ```
+5. Klik **Tambahkan**, lalu pilih ekstensi yang ingin di-instal.
+
+### Kototoro
+
+1. Buka aplikasi Kototoro.
+2. Masuk ke menu *Sources / Extensions*, pilih kategori **CloudStream**.
+3. Tambahkan URL yang sama dengan langkah CloudStream di atas.
 
 ## Membangun Proyek
 
-Untuk membangun proyek ini, Anda memerlukan [Gradle](https://gradle.org/) yang terinstal. Anda dapat membangun proyek menggunakan perintah berikut:
+Proyek menggunakan Gradle wrapper. Untuk build lokal:
 
-sh ./gradlew build
+```sh
+./gradlew make makePluginsJson ensureJarCompatibility
+```
+
+CI build otomatis (GitHub Actions) mem-publish artefak `.cs3` + `plugins.json` + `repo.json` ke branch `builds`.
 
 ## Kontribusi
 
-Kami menyambut baik kontribusi dari komunitas! Jika Anda ingin menambahkan ekstensi baru, memperbaiki bug, atau meningkatkan dokumentasi, silakan buat *pull request* atau buka *issue*.
+Kontribusi disambut. Untuk menambah ekstensi baru, memperbaiki bug, atau melaporkan domain mati, silakan buka *issue* atau kirim *pull request*.

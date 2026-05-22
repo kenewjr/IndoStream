@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 import org.jsoup.nodes.Element
 
 class Samehadaku : MainAPI() {
-    override var mainUrl = "https://samehadaku.now"
+    override var mainUrl = "https://v2.samehadaku.how"
     override var name = "Samehadaku"
     override val hasMainPage = true
     override var lang = "id"

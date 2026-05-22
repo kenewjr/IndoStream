@@ -17,6 +17,8 @@ class Nekopoi : MainAPI() {
     override var name = "Nekopoi"
     override val hasMainPage = true
     override var lang = "id"
+    override val hasQuickSearch = true
+    override val hasDownloadSupport = true
     private val fetch by lazy { Session(app.baseClient) }
     override val supportedTypes = setOf(
         TvType.NSFW,
@@ -51,11 +53,35 @@ class Nekopoi : MainAPI() {
 
     }
 
+    // Curated home rows. Each entry becomes a horizontally scrollable row in
+    // CloudStream / fork apps, giving the user an "advanced browse" UX without
+    // needing fork-specific filter APIs.
+    //
+    //  Group 1 — Format
+    //  Group 2 — Status / freshness
+    //  Group 3 — Popular tags (genre filters)
     override val mainPage = mainPageOf(
+        // Format
         "$mainUrl/category/hentai/" to "Hentai",
-        "$mainUrl/category/jav/" to "Jav",
+        "$mainUrl/category/jav/" to "JAV",
         "$mainUrl/category/3d-hentai/" to "3D Hentai",
-        "$mainUrl/category/jav-cosplay/" to "Jav Cosplay",
+        "$mainUrl/category/jav-cosplay/" to "JAV Cosplay",
+        // Status & freshness
+        "$mainUrl/category/sub-indo/" to "Sub Indo",
+        "$mainUrl/category/uncensored/" to "Uncensored",
+        "$mainUrl/category/censored/" to "Censored",
+        "$mainUrl/" to "Terbaru",
+        // Popular genre tags (acts as quick filter rows)
+        "$mainUrl/tag/big-tits/" to "Tag: Big Tits",
+        "$mainUrl/tag/big-boobs/" to "Tag: Big Boobs",
+        "$mainUrl/tag/schoolgirl/" to "Tag: Schoolgirl",
+        "$mainUrl/tag/romance/" to "Tag: Romance",
+        "$mainUrl/tag/vanilla/" to "Tag: Vanilla",
+        "$mainUrl/tag/threesome/" to "Tag: Threesome",
+        "$mainUrl/tag/maid/" to "Tag: Maid",
+        "$mainUrl/tag/yuri/" to "Tag: Yuri",
+        "$mainUrl/tag/ntr/" to "Tag: NTR",
+        "$mainUrl/tag/anal/" to "Tag: Anal",
     )
 
     override suspend fun getMainPage(
@@ -116,15 +142,45 @@ class Nekopoi : MainAPI() {
         }
     }
 
+    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
+
     override suspend fun search(query: String): List<SearchResponse> {
-        // The previous /search/<query> path 404s on the new theme; the site
-        // now uses standard WordPress query parameters (?s=...&post_type=anime),
-        // exactly like the search form on the page.
-        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-        return fetch.get("$mainUrl/?s=$encoded&post_type=anime")
+        // Smart search dengan prefix filter:
+        //   "tag:vanilla schoolgirl"     -> /tag/vanilla/?s=schoolgirl
+        //   "category:jav big tits"      -> /category/jav/?s=big+tits
+        //   "jav:cosplay"  / "hentai:"   -> shortcut ke kategori populer
+        // Tanpa prefix, fallback ke WordPress search standar.
+        val (path, residue) = parseSearchPrefix(query)
+        val encoded = java.net.URLEncoder.encode(residue, "UTF-8")
+        val target = if (path != null) {
+            "$mainUrl$path?s=$encoded"
+        } else {
+            "$mainUrl/?s=$encoded&post_type=anime"
+        }
+        return fetch.get(target)
             .document
             .select("div.nk-search-results ul li")
             .mapNotNull { it.toSearchResult() }
+    }
+
+    private fun parseSearchPrefix(query: String): Pair<String?, String> {
+        val trimmed = query.trim()
+        val colon = trimmed.indexOf(':').takeIf { it in 1..15 } ?: return null to trimmed
+        val prefix = trimmed.substring(0, colon).lowercase()
+        val rest = trimmed.substring(colon + 1).trim()
+        val slug = rest.lowercase().replace(' ', '-').ifBlank { null }
+        return when (prefix) {
+            "tag" -> (slug?.let { "/tag/$it/" } to "")
+            "category", "cat" -> (slug?.let { "/category/$it/" } to "")
+            "jav" -> "/category/jav/" to rest
+            "hentai" -> "/category/hentai/" to rest
+            "3d" -> "/category/3d-hentai/" to rest
+            "cosplay" -> "/category/jav-cosplay/" to rest
+            "sub", "subindo" -> "/category/sub-indo/" to rest
+            "uncensored" -> "/category/uncensored/" to rest
+            "censored" -> "/category/censored/" to rest
+            else -> null to trimmed
+        }
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -193,11 +249,36 @@ class Nekopoi : MainAPI() {
         //  * Episode page -> falls back to a single self-link so playback still works.
         val episodes = document.select("a.nk-episode-card").mapNotNull { card ->
             val link = fixUrlNull(card.attr("href")) ?: return@mapNotNull null
-            val name = card.selectFirst(".nk-episode-badge")?.text()?.trim()
+            val badgeText = card.selectFirst(".nk-episode-badge")?.text()?.trim()
+            val name = badgeText
                 ?: card.selectFirst(".nk-episode-card-info")?.text()?.trim()
                 ?: card.text().trim()
-            newEpisode(link) { this.name = name }
+            // Per-episode thumbnail: <div class="nk-episode-card-thumb"
+            // style="background-image: url('...')">. Reusing backgroundImageRegex
+            // ensures we handle quoted/unquoted URLs uniformly.
+            val thumbStyle = card.selectFirst("div.nk-episode-card-thumb")
+                ?.attr("style").orEmpty()
+            val episodePoster = fixUrlNull(
+                backgroundImageRegex.find(thumbStyle)?.groupValues?.getOrNull(1)
+            )
+            // Parse "Ep 12" / "Episode 12" -> 12 for proper player labels.
+            val epNum = badgeText?.let { Regex("(\\d+)").find(it)?.value?.toIntOrNull() }
+            newEpisode(link) {
+                this.name = name
+                this.posterUrl = episodePoster
+                this.episode = epNum
+            }
         }.takeIf { it.isNotEmpty() } ?: listOf(newEpisode(url) { this.name = title })
+
+        // Recommendations: theme baru menampilkan "Anime Lainnya" / "Related"
+        // sebagai grid <div class="nk-related-list"> berisi <a> dengan thumbnail
+        // dalam .nk-related-thumb (background-image). Kita re-use toSearchResult
+        // supaya parsing poster style="background-image:" tetap konsisten.
+        val recommendations = document.select(
+            "div.nk-related-list a, div.nk-related a, div.related a"
+        ).mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
+            .take(20)
 
         return newAnimeLoadResponse(title, url, TvType.NSFW) {
             engName = title
@@ -208,6 +289,7 @@ class Nekopoi : MainAPI() {
             showStatus = status
             plot = description
             this.tags = tags
+            this.recommendations = recommendations
         }
     }
 

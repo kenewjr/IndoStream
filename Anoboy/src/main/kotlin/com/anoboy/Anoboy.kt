@@ -7,7 +7,7 @@ import java.util.ArrayList
 
 
 class Anoboy : MainAPI() {
-    override var mainUrl = "https://ww1.anoboy.app"
+    override var mainUrl = "https://anoboy.bec"
     override var name = "Anoboy"
     override val hasMainPage = true
     override var lang = "id"

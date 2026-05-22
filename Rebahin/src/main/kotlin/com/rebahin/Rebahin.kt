@@ -13,12 +13,15 @@ import java.net.URI
 import org.jsoup.nodes.Element
 
 open class Rebahin : MainAPI() {
-    override var mainUrl = "http://159.65.211.183/"
+    // Domain saat ini per user (May 2026): rebahin.ink. IP fallback bila domain
+    // diblokir ISP: 143.198.193.183 — biarkan sebagai catatan, tidak dipakai
+    // sebagai primary karena bare-IP biasanya gagal TLS handshake.
+    override var mainUrl = "https://rebahin.ink"
     private var directUrl: String? = null
     override var name = "Rebahin"
     override val hasMainPage = true
     override var lang = "id"
-    open var mainServer = "http://159.65.211.183/"
+    open var mainServer = "https://rebahin.ink"
     override val supportedTypes =
             setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 

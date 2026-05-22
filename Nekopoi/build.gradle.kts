@@ -1,13 +1,14 @@
 // use an integer for version numbers
-version = 7
+version = 8
 
 
 cloudstream {
     language = "id"
-    // All of these properties are optional, you can safely remove them
+    description = "Nekopoi.care provider — hentai, JAV, 3D, dan cosplay sub Indo. " +
+        "Dukungan smart-search dengan prefix (tag:, jav:, hentai:, uncensored:, dst.), " +
+        "rekomendasi otomatis, thumbnail per-episode."
 
-    // description = "Lorem Ipsum"
-     authors = listOf("Sora", "TeKuma25")
+    authors = listOf("Sora", "TeKuma25")
 
     /**
      * Status int as the following:
