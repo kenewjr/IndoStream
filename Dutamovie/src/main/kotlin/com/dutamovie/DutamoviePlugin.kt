@@ -9,8 +9,13 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class DutaMoviePlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DutaMovie())
-        registerExtractorAPI(Ryderjet())
+        // `Ryderjet` tidak ada lagi di paket extractors CloudStream sehingga
+        // baris registrasinya dihapus. Sebagai gantinya, semua extractor JWPlayer
+        // lokal kita daftarkan supaya host yang relevan (embedpyrox, helvid, p2pplay)
+        // tetap bisa di-resolve.
         registerExtractorAPI(JWPlayer())
-        registerExtractorAPI(Embedfirex())
+        registerExtractorAPI(Embedpyrox())
+        registerExtractorAPI(Helvid())
+        registerExtractorAPI(P2pplay())
     }
 }

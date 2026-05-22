@@ -11,7 +11,8 @@ class LayarKacaPlugin : Plugin() {
         // directly.
         registerMainAPI(LayarKaca())
         registerExtractorAPI(Emturbovid())
-        registerExtractorAPI(Furher())
+        // `Furher` tidak ada di module LayarKaca maupun di paket extractors
+        // CloudStream upstream, jadi registrasinya dihapus.
         registerExtractorAPI(Hownetwork())
     }
 }

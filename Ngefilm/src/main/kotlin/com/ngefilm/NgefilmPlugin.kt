@@ -1,7 +1,8 @@
 package com.ngefilm
 
 import android.content.Context
-import com.lagradost.cloudstream3.extractors.Chillx
+// `Chillx` sudah dihapus dari paket extractors CloudStream upstream, jadi
+// import dan registrasinya ikut dihapus.
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 
@@ -12,6 +13,5 @@ class NgefilmPlugin : Plugin() {
         // directly.
         registerMainAPI(Ngefilm())
         registerExtractorAPI(Boosterx())
-        registerExtractorAPI(Chillx())
     }
 }
