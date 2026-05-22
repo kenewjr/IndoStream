@@ -18,11 +18,14 @@ buildscript {
         // dan exception "Should never be called" di setiap plugin.
         //
         // Solusi: override R8 dengan versi yang sudah mengenal Kotlin 2.3 metadata.
+        // Per dokumen kompatibilitas Android, dukungan Kotlin 2.3 metadata baru ada
+        // mulai R8 9.0.28+. 9.0.32 adalah versi minimum yang dipublikasikan ke
+        // Google Maven dan terbukti aman.
         // Deklarasi ini HARUS di atas classpath AGP supaya Gradle memilih R8 ini
         // alih-alih R8 yang ter-pull transitively oleh AGP.
         // Referensi tabel kompatibilitas:
         //   https://developer.android.com/studio/build/kotlin-d8-r8-versions
-        classpath("com.android.tools:r8:8.13.22")
+        classpath("com.android.tools:r8:9.0.32")
 
         classpath("com.android.tools.build:gradle:8.7.3") // Jangan diganti ke versi terbaru, karena ada masalah dengan versi terbaru
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
