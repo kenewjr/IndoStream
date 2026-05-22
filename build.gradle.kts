@@ -13,7 +13,12 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3") // Jangan diganti ke versi terbaru, karena ada masalah dengan versi terbaru
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        // Match the Kotlin version that com.lagradost:cloudstream3:pre-release was
+        // compiled with (currently 2.3.x). When the upstream JAR's metadata version
+        // is newer than this compiler, every plugin breaks with
+        //   "Module was compiled with an incompatible version of Kotlin"
+        // followed by "Unresolved reference" cascades on every CS API call.
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
     }
 }
 
