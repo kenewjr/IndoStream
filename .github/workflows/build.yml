@@ -83,6 +83,27 @@ jobs:
           cp **/build/*.jar ../builds || true
           cp build/plugins.json ../builds || true
 
+      - name: Generate CloudStream repo.json
+        run: |
+          # CloudStream "Add repository" mengharapkan file manifest bernama
+          # repo.json yang berisi field pluginLists, bukan langsung plugins.json.
+          # File ini yang di-paste ke app, lalu CloudStream sendiri yang
+          # men-download plugins.json yang ditunjuk di pluginLists.
+          REPO_RAW="https://raw.githubusercontent.com/${{ github.repository }}/builds"
+          cat > builds/repo.json <<EOF
+          {
+            "name": "IndoStream",
+            "description": "CloudStream extensions untuk situs streaming Indonesia.",
+            "manifestVersion": 1,
+            "homepage": "https://github.com/${{ github.repository }}",
+            "pluginLists": [
+              "${REPO_RAW}/plugins.json"
+            ]
+          }
+          EOF
+          echo "Generated builds/repo.json:"
+          cat builds/repo.json
+
       - name: Push builds
         run: |
           cd builds
