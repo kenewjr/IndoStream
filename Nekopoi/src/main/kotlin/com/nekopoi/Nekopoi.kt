@@ -105,29 +105,33 @@ class Nekopoi : MainAPI() {
         val base = request.data.trimEnd('/')
         val document = fetch.get("$base/page/$page/").document
 
-        // Theme NekoPoi v2.x renders TWO different listing layouts:
-        //   1. Category & genre archives -> div.nk-search-results > ul > li
+        // Theme NekoPoi v2.x renders THREE different listing layouts:
+        //   1. Category & genre archives   -> div.nk-search-results > ul > li
         //      with .nk-search-item cards using PORTRAIT posters (~210x300).
-        //   2. Homepage "Episode Terbaru" feed -> div#nk-episode-grid with
-        //      div.nk-post-card children using HORIZONTAL episode screenshots
-        //      (~300x169). The /page/N/ pagination on the homepage uses this
-        //      same layout.
+        //   2. Homepage "Episode Terbaru"  -> a plain <ul><li> grid where each
+        //      item has .nk-grid-thumb (background-image) + .nk-jav-meta
+        //      with the title link. Thumbnails are HORIZONTAL (300x200).
+        //   3. Legacy nk-post-card layout  -> still used by sticky/announcement
+        //      posts (e.g. the perennial "Selamat Tahun Baru 2022" greeting),
+        //      which we deliberately skip so the Terbaru row only shows real
+        //      recent content.
         //
         // We must:
         //   * Try search-results first (genre/category rows).
-        //   * Fall back to post-card grid (Terbaru row).
+        //   * Fall back to the grid-thumb layout (Terbaru).
+        //   * Skip nk-post-card entirely on the homepage.
         //   * Tell CloudStream which orientation the row uses, otherwise
-        //     portrait posters get cropped to 16:9 and look broken in the
-        //     genre/category rows.
+        //     portrait posters get cropped to 16:9 in genre/category rows.
         val searchItems = document.select("div.nk-search-results ul li")
             .mapNotNull { it.toSearchResult() }
         val (home, isHorizontal) = if (searchItems.isNotEmpty()) {
             // Portrait posters (search/genre/category)
             searchItems to false
         } else {
-            // Horizontal episode screenshots (Terbaru)
-            document.select("div.nk-post-card")
-                .mapNotNull { it.toPostCardResult() } to true
+            // Horizontal grid screenshots (Terbaru)
+            val gridItems = document.select("li:has(div.nk-grid-thumb)")
+                .mapNotNull { it.toGridThumbResult() }
+            gridItems to true
         }
 
         // Real pagination state: NekoPoi renders a <nav class="navigation
@@ -189,43 +193,48 @@ class Nekopoi : MainAPI() {
      * Parses an "Episode Terbaru" card from the homepage feed (and its
      * /page/N/ pagination). Markup looks like:
      *
-     *   <div class="nk-post-card">
-     *     <div class="nk-post-thumb">
-     *       <div class="nk-thumb-crop" style="background-image: url('...')"></div>
-     *     </div>
-     *     <div class="nk-post-meta">
-     *       <h2><a href="...">Title</a></h2>
-     *       <span><span class="dashicons ..."></span>Date</span>
-     *     </div>
-     *   </div>
+     *   <ul>
+     *     <li>
+     *       <div class="nk-grid-thumb"
+     *            style="background-image: url('...')">
+     *         <a href="..." title="..."></a>
+     *       </div>
+     *       <div class="nk-jav-meta">
+     *         <a href="..." title="..."><h2>Title</h2></a>
+     *         <span><span class="dashicons ..."></span>Date</span>
+     *       </div>
+     *     </li>
+     *   </ul>
      *
-     * Different from .nk-search-item (no genre badges/synopsis), so it needs
-     * its own parser instead of being shoehorned into toSearchResult().
+     * Different from .nk-search-item (no genre badges/synopsis) AND from the
+     * legacy .nk-post-card sticky layout (which we ignore so the Terbaru row
+     * doesn't surface ancient announcement posts like "Selamat Tahun Baru
+     * 2022").
      */
-    private fun Element.toPostCardResult(): AnimeSearchResponse? {
-        val link = this.selectFirst("div.nk-post-meta h2 a")
-            ?: this.selectFirst("a[href]")
+    private fun Element.toGridThumbResult(): AnimeSearchResponse? {
+        // Title comes from .nk-jav-meta h2; the link can live on either the
+        // wrapping anchor in .nk-jav-meta or the empty anchor inside
+        // .nk-grid-thumb. Prefer the meta link because it carries the title
+        // attribute as a fallback.
+        val metaLink = this.selectFirst("div.nk-jav-meta a[href]")
+        val thumbLink = this.selectFirst("div.nk-grid-thumb a[href]")
+        val link = metaLink ?: thumbLink ?: this.selectFirst("a[href]") ?: return null
+
+        val title = this.selectFirst("div.nk-jav-meta h2")?.text()?.trim()
+            ?: link.attr("title").takeIf { it.isNotBlank() }
+            ?: link.text().trim().ifBlank { null }
             ?: return null
-        val title = link.text().trim().ifBlank { return null }
         val href = getProperAnimeLink(link.attr("href"))
 
-        // Thumbnail bug fix: post cards nest the styled div inside
-        // .nk-post-thumb:
-        //   <div class="nk-post-thumb">
-        //     <div class="nk-thumb-crop" style="background-image: url('...')">
-        // Previous code used `selectFirst("div.nk-thumb-crop, div.nk-post-thumb")`
-        // which returns matches in document order (not selector order), so the
-        // outer parent without `style` won every time and the regex below
-        // matched nothing -> posterUrl was always null and the Terbaru row
-        // looked empty. We now query the inner element FIRST, falling back to
-        // the parent only if a markup variant without the inner div ever ships.
-        val thumbStyle = this.selectFirst("div.nk-thumb-crop")?.attr("style")
-            ?: this.selectFirst("div.nk-post-thumb")?.attr("style")
-            ?: ""
+        // Background-image lives directly on .nk-grid-thumb, no nested wrapper
+        // like the old post-card layout, so a single read is enough.
+        val thumbStyle = this.selectFirst("div.nk-grid-thumb")
+            ?.attr("style").orEmpty()
         val poster = fixUrlNull(
             backgroundImageRegex.find(thumbStyle)?.groupValues?.getOrNull(1)
                 ?: this.selectFirst("img")?.attr("src")
         )
+
         return newAnimeSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = poster
         }
