@@ -7,7 +7,12 @@ import java.util.ArrayList
 
 
 class Anoboy : MainAPI() {
-    override var mainUrl = "https://anoboy.bec"
+    // Mirror aktif (per probe May 2026):
+    //   https://anoboy.my.id  (primary, .id ccTLD paling stabil)
+    //   https://anoboy.sh     (fallback, juga 200 OK)
+    //   https://anoboy.si     (timeout saat probe terakhir, tetap dicatat)
+    // Kalau primary diblokir ISP, swap ke salah satu fallback di atas.
+    override var mainUrl = "https://anoboy.my.id"
     override var name = "Anoboy"
     override val hasMainPage = true
     override var lang = "id"
