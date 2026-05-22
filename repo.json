@@ -1,0 +1,9 @@
+{
+  "name": "IndoStream",
+  "description": "CloudStream extensions untuk situs streaming Indonesia.",
+  "manifestVersion": 1,
+  "homepage": "https://github.com/kenewjr/IndoStream",
+  "pluginLists": [
+    "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/plugins.json"
+  ]
+}

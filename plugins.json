@@ -1,0 +1,218 @@
+[
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/AnimeIndo.cs3",
+        "status": 1,
+        "version": 29,
+        "name": "AnimeIndo",
+        "internalName": "AnimeIndo",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 22992,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=gomunime.top&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-912d61f3ab43a9c4d8066f3d1350eaccb49b791b8d51656be9c64776755a2cf4"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/AnimePahe.cs3",
+        "status": 1,
+        "version": 28,
+        "name": "AnimePahe",
+        "internalName": "AnimePahe",
+        "authors": [
+            "phisher98"
+        ],
+        "description": "Animes (SUB/DUB)",
+        "fileSize": 53697,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "en",
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animepahe.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-5ee36573aaa3faf642d798f9bea5c49c8fccf7303abc681bec06824dfb6590df"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/Anoboy.cs3",
+        "status": 1,
+        "version": 10,
+        "name": "Anoboy",
+        "internalName": "Anoboy",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 21003,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=anoboy.my.id&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-1ce278dfbe14fa886188d29153971652bd529725195c1ff10ba6e219093094e6"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/Dubbindo.cs3",
+        "status": 1,
+        "version": 4,
+        "name": "Dubbindo",
+        "internalName": "Dubbindo",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 16985,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Cartoon",
+            "Anime"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.dubbindo.site&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-529cfb69d84c9e94f243a4da0f6946e9db7c3a5ec37c87bfcf9aec6a6e0ef513"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/IdlixProvider.cs3",
+        "status": 1,
+        "version": 15,
+        "name": "IdlixProvider",
+        "internalName": "IdlixProvider",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 59138,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Anime",
+            "AsianDrama"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/idlix.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-3b728d22e247dff95d3d242abfc5ef4a38bab7d811be03138dc9ca62d86da1c2"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/LayarKacaProvider.cs3",
+        "status": 1,
+        "version": 14,
+        "name": "LayarKacaProvider",
+        "internalName": "LayarKacaProvider",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 29695,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv10.lk21official.cc&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-b9512269642cb2cedd9e955427ba1279947e1baf864c439e5973708f0cbf7e8e",
+        "jarFileSize": 128908,
+        "jarUrl": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/LayarKacaProvider.jar",
+        "jarHash": "sha256-d83282ee39d4bfb10c09bbfd11d522084c274d196cf8105f1e9f9904731441d0"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/Nekopoi.cs3",
+        "status": 1,
+        "version": 26,
+        "name": "Nekopoi",
+        "internalName": "Nekopoi",
+        "authors": [
+            "kenewjr"
+        ],
+        "description": "Nekopoi.care provider \u2014 hentai, JAV, 3D, dan cosplay sub Indo. ",
+        "fileSize": 56427,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "NSFW"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=nekopoi.care&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-af48ba4b1a3270cf84cf1c78b7a835bc6fc060729af0107ec78c7841a56a005c"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/Pencurimovie.cs3",
+        "status": 1,
+        "version": 7,
+        "name": "Pencurimovie",
+        "internalName": "Pencurimovie",
+        "authors": [
+            "kenewjr"
+        ],
+        "description": "Pencurimovie ",
+        "fileSize": 18506,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=ww11.pencurimovie.sbs&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-0679b3096f45e30fbeaea4a181eba306aa3edd227559843eaec757b1e2e453cc"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/Rebahin.cs3",
+        "status": 1,
+        "version": 19,
+        "name": "Rebahin",
+        "internalName": "Rebahin",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 28412,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "AsianDrama",
+            "Anime",
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=rebahinxxi3.biz&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-2da9a92f454b65a45423aefbbeb1e6871b944c13bfb9f6ef47ff664f3f2a316c"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/kenewjr/IndoStream/builds/Samehadaku.cs3",
+        "status": 1,
+        "version": 29,
+        "name": "Samehadaku",
+        "internalName": "Samehadaku",
+        "authors": [
+            "kenewjr"
+        ],
+        "fileSize": 26438,
+        "repositoryUrl": "https://github.com/kenewjr/IndoStream",
+        "language": "id",
+        "tvTypes": [
+            "AnimeMovie",
+            "OVA",
+            "Anime"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=samehadaku.email&sz=256",
+        "apiVersion": 1,
+        "fileHash": "sha256-f22f79db3446ddf41bf5c2823a6b3a7ca9e6295f3246c5a33ca7ed9908109133"
+    }
+]
