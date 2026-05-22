@@ -11,6 +11,19 @@ buildscript {
     }
 
     dependencies {
+        // R8 yang ter-bundle dengan AGP 8.7.3 adalah R8 8.7.18 — versi ini hanya
+        // bisa parse Kotlin metadata sampai versi 2.0.x. Karena cloudstream:pre-release
+        // sekarang dikompilasi dengan Kotlin 2.3 (metadata 2.3.0), tahap dexing akan
+        // gagal dengan "WARNING: D8: An error occurred when parsing kotlin metadata"
+        // dan exception "Should never be called" di setiap plugin.
+        //
+        // Solusi: override R8 dengan versi yang sudah mengenal Kotlin 2.3 metadata.
+        // Deklarasi ini HARUS di atas classpath AGP supaya Gradle memilih R8 ini
+        // alih-alih R8 yang ter-pull transitively oleh AGP.
+        // Referensi tabel kompatibilitas:
+        //   https://developer.android.com/studio/build/kotlin-d8-r8-versions
+        classpath("com.android.tools:r8:8.13.22")
+
         classpath("com.android.tools.build:gradle:8.7.3") // Jangan diganti ke versi terbaru, karena ada masalah dengan versi terbaru
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
         // Match the Kotlin version that com.lagradost:cloudstream3:pre-release was
