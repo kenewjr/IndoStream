@@ -16,6 +16,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import java.util.concurrent.atomic.AtomicInteger
 
 class Otakudesu : MainAPI() {
     override var mainUrl = "https://otakudesu.blog"
@@ -399,9 +400,7 @@ class Otakudesu : MainAPI() {
         callback: (ExtractorLink) -> Unit,
         quality: Int = Qualities.Unknown.value,
     ) = coroutineScope {
-        val resolvedCount =
-            java.util.concurrent.atomic
-                .AtomicInteger(0)
+        val resolvedCount = AtomicInteger(0)
         try {
             loadExtractor(url, referer, subtitleCallback) { link ->
                 resolvedCount.incrementAndGet()

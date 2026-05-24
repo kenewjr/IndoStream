@@ -19,6 +19,7 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import java.util.concurrent.atomic.AtomicInteger
 
 suspend fun loadCustomExtractor(
     name: String? = null,
@@ -28,9 +29,7 @@ suspend fun loadCustomExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null,
 ) {
-    val resolvedCount =
-        java.util.concurrent.atomic
-            .AtomicInteger(0)
+    val resolvedCount = AtomicInteger(0)
     try {
         loadExtractor(url, referer, subtitleCallback) { link ->
             resolvedCount.incrementAndGet()

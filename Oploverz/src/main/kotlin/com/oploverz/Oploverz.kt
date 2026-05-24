@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 class Oploverz : MainAPI() {
     override var mainUrl = "https://vip.oploverz.ltd"
