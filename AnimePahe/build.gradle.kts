@@ -1,7 +1,12 @@
 // use an integer for version numbers
-version = 20
+version = 21
 
 android {
+    // Override root namespace ("com.tekuma25") so AGP generates BuildConfig
+    // in com.phisher98, matching the package declared in BottomSheet.kt and
+    // sibling Phisher98 sources. Without this, references like
+    // BuildConfig.LIBRARY_PACKAGE_NAME fail with "Unresolved reference".
+    namespace = "com.phisher98"
     buildFeatures {
         buildConfig = true
         viewBinding = true
