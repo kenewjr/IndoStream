@@ -38,6 +38,11 @@ class Nekopoi : MainAPI() {
             "GoogleDrive",
         )
         const val mirroredHost = "https://www.mirrored.to"
+
+        // Matches inline CSS like: background-image: url('https://...')
+        // Group 1 captures the URL with optional surrounding single/double quotes.
+        val backgroundImageRegex = Regex("""background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""")
+
         fun getStatus(t: String?): ShowStatus {
             return when (t) {
                 "Completed" -> ShowStatus.Completed

@@ -26,7 +26,6 @@ Status terakhir diverifikasi: **2026-05-24** (audit menyeluruh + bug fix sweep).
 | Kuramanime    | v18.kuramanime.ing            | Jalan, loadLinks diimplementasi |
 | Kuronime      | kuronime.net                  | Jalan, episode selector multi-fallback |
 | LayarKaca     | tv1.lk21official.love         | Jalan, episode selector multi-fallback |
-| Minioppai     | minioppai.org                 | Jalan (terkonfirmasi user, audit sandbox tidak bisa connect) |
 | Nekopoi       | nekopoi.care                  | Jalan, multi-stream support + smart-search |
 | Neonime       | otakupoi.org/neonime          | Jalan, episode null-safety diperbaiki |
 | Ngefilm       | new35.ngefilm.site            | Jalan, semua fungsi diimplementasi (sebelumnya stub) |
