@@ -20,8 +20,6 @@ IndoStream adalah kumpulan ekstensi CloudStream yang berfokus pada penyediaan ko
 | IdlixProvider     | Jalan |
 | LayarKacaProvider | Jalan |
 | Nekopoi           | Jalan |
-| Oploverz          | Jalan |
-| Otakudesu         | Jalan |
 | Pencurimovie      | Jalan |
 | Rebahin           | Jalan |
 | Samehadaku        | Jalan |
