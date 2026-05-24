@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 34
+version = 11
 
 
 cloudstream {
@@ -7,7 +7,7 @@ cloudstream {
     // All of these properties are optional, you can safely remove them
 
     // description = "Lorem Ipsum"
-    authors = listOf("TeKuma25")
+     authors = listOf("Phisher98")
 
     /**
      * Status int as the following:
@@ -18,10 +18,11 @@ cloudstream {
      * */
     status = 1 // will be 3 if unspecified
     tvTypes = listOf(
-        "AnimeMovie",
+        "TvSeries",
+        "Movie",
         "Anime",
-        "OVA",
+        "AsianDrama",
     )
-
-    iconUrl = "https://www.google.com/s2/favicons?domain=oploverz.care&sz=%size%"
+    isCrossPlatform = false
+    iconUrl = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/idlix.png"
 }

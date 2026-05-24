@@ -11,17 +11,20 @@ IndoStream adalah kumpulan ekstensi CloudStream yang berfokus pada penyediaan ko
 
 ## Daftar Ekstensi
 
-| Nama Ekstensi | Status |
-| ------------- | ------ |
-| AnimeIndo     | Jalan |
-| Anoboy        | Patched, perlu rebuild |
-| Dubbindo      | Patched, perlu rebuild |
-| Nekopoi       | Jalan |
-| Oploverz      | Patched, perlu rebuild |
-| Otakudesu     | Jalan |
-| Pencurimovie  | Jalan |
-| Rebahin       | Jalan |
-| Samehadaku    | Jalan |
+| Nama Ekstensi     | Status |
+| ----------------- | ------ |
+| AnimeIndo         | Jalan |
+| AnimePahe         | Jalan|
+| Anoboy            | Jalan |
+| Dubbindo          | Jalan |
+| IdlixProvider     | Jalan |
+| LayarKacaProvider | Jalan |
+| Nekopoi           | Jalan |
+| Oploverz          | Jalan |
+| Otakudesu         | Jalan |
+| Pencurimovie      | Jalan |
+| Rebahin           | Jalan |
+| Samehadaku        | Jalan |
 
 ## Cara Menggunakan
 
