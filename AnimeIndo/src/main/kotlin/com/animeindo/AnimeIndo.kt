@@ -3,14 +3,17 @@ package com.animeindo
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
-import org.jsoup.Jsoup
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
 
 class AnimeIndo : MainAPI() {
+    // [FIXED]: gomunime.top sekarang pakai layout Tailwind/Laravel modern,
+    // bukan WordPress dengan class .bs/.tt/.thumb seperti dulu.
     override var mainUrl = "https://gomunime.top"
     override var name = "AnimeIndo"
     override val hasMainPage = true
@@ -18,83 +21,79 @@ class AnimeIndo : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
-        fun getType(t: String): TvType {
-            return if (t.contains("OVA", true) || t.contains("Special")) TvType.OVA
-            else if (t.contains("Movie", true)) TvType.AnimeMovie else TvType.Anime
+        fun getType(t: String?): TvType {
+            if (t == null) return TvType.Anime
+            return when {
+                t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
+                t.contains("Movie", true) -> TvType.AnimeMovie
+                t.contains("ONA", true) -> TvType.OVA
+                else -> TvType.Anime
+            }
         }
 
-        fun getStatus(t: String): ShowStatus {
-            return when (t) {
-                "Finished Airing" -> ShowStatus.Completed
-                "Currently Airing" -> ShowStatus.Ongoing
+        fun getStatus(t: String?): ShowStatus {
+            if (t == null) return ShowStatus.Completed
+            return when {
+                t.contains("Ongoing", true) || t.contains("Currently", true) ->
+                    ShowStatus.Ongoing
+                t.contains("Completed", true) || t.contains("Finished", true) ->
+                    ShowStatus.Completed
                 else -> ShowStatus.Completed
             }
         }
     }
 
-    override val mainPage =
-            mainPageOf(
-                    "" to "Latest Release",
-                    "genres/action" to "Action",
-                    "genres/adult-cast" to "Adult Cast",
-                    "genres/adventure" to "Adventure",
-                    "genres/Award-Winning" to "Award Winning",
-                    "genres/comedy" to "Comedy",
-                    "genres/drama" to "Drama",
-                    "genres/ecchi" to "Ecchi",
-                    "genres/isekai" to "Isekai",
-                    "genres/fantasy" to "Fantasy",
-                    "genres/harem" to "Harem",
-                    "genres/historical" to "Historical",
-                    "genres/martial-arts" to "Martial Arts",
-                    "genres/military" to "Military",
-                    "genres/music" to "Music",
-                    "genres/mystery" to "Mystery",
-                    "genres/parody" to "Parody",
-                    "genres/psychological" to "Psychological",
-                    "genres/romance" to "Romance",
-                    "genres/school" to "School",
-                    "genres/sci-fi" to "Sci-Fi",
-                    "genres/sports" to "Sports",
-                    "latest-release" to "Episode Terbaru",
-                    "ongoing" to "Anime Ongoing",
-                    "populer" to "Anime Populer",
-                    "donghua-terbaru" to "Donghua Terbaru",
-            )
+    // [FIXED]: URL endpoint disesuaikan dengan struktur baru:
+    //   /            -> homepage (sections: Episode Terbaru, Trending, Top, Movies, Ongoing, Rating)
+    //   /status/ongoing, /status/completed
+    //   /type/movie
+    //   /koleksi/anime-skor-mal-tertinggi
+    //   /genre/<slug>  (singular, bukan /genres/)
+    override val mainPage = mainPageOf(
+        "$mainUrl/status/ongoing" to "Anime Ongoing",
+        "$mainUrl/status/completed" to "Anime Tamat",
+        "$mainUrl/type/movie" to "Movies",
+        "$mainUrl/koleksi/anime-skor-mal-tertinggi" to "Rating Tertinggi",
+        "$mainUrl/genre/action" to "Genre: Action",
+        "$mainUrl/genre/adventure" to "Genre: Adventure",
+        "$mainUrl/genre/fantasy" to "Genre: Fantasy",
+        "$mainUrl/genre/comedy" to "Genre: Comedy",
+        "$mainUrl/genre/romance" to "Genre: Romance",
+        "$mainUrl/genre/isekai" to "Genre: Isekai",
+        "$mainUrl/genre/shounen" to "Genre: Shounen",
+        "$mainUrl/genre/school" to "Genre: School",
+        "$mainUrl/genre/drama" to "Genre: Drama",
+        "$mainUrl/genre/supernatural" to "Genre: Supernatural",
+    )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/page/$page").document
-        val home = document.select("article.bs").mapNotNull { it.toSearchResult() }
+        // [FIXED]: pagination dilakukan via query string ?page=N untuk
+        // listing pages (status/type/koleksi/genre menggunakan paginator standar).
+        val url = if (page > 1) "${request.data}?page=$page" else request.data
+        val document = runCatching { app.get(url).document }.getOrNull()
+            ?: return newHomePageResponse(request.name, emptyList())
+
+        // [FIXED]: kartu anime sekarang <a class="card-netflix ...">
+        // dengan h3 title, img poster, dan p.text-[11px] berisi type/year.
+        val home = document.select("a.card-netflix").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, home)
     }
 
-    private fun getProperAnimeLink(uri: String): String {
-        return if (uri.contains("/anime/")) {
-            uri
-        } else {
-            var title = uri.substringAfter("$mainUrl/")
-            title =
-                    when {
-                        (title.contains("-episode")) && !(title.contains("-movie")) ->
-                                title.substringBefore("-episode")
-                        (title.contains("-movie")) -> title.substringBefore("-movie")
-                        else -> title
-                    }
-
-            "$mainUrl/anime/$title"
+    private fun Element.toSearchResult(): AnimeSearchResponse? {
+        // [FIXED]: title dari h3, link dari href, poster dari img.
+        val link = this.attr("href").takeIf { it.isNotBlank() } ?: return null
+        val href = if (link.startsWith("http")) link else "$mainUrl${link.removePrefix("/").let { "/$it" }}"
+        val title = this.selectFirst("h3")?.text()?.trim()
+            ?: this.selectFirst("img")?.attr("alt")?.trim()
+            ?: return null
+        val posterUrl = this.selectFirst("img")?.let { img ->
+            img.attr("src").takeIf { it.isNotBlank() }
+                ?: img.attr("data-src").takeIf { it.isNotBlank() }
         }
-    }
-
-    private fun Element.toSearchResult(): AnimeSearchResponse {
-        val title = this.selectFirst("div.tt > h2")?.text()?.trim() ?: ""
-        val href = getProperAnimeLink(this.selectFirst("a.tip")!!.attr("href"))
-        val posterUrl = fixUrl(this.selectFirst("div.limit > img")?.attr("src") ?: "")
-        val epNum =
-                this.selectFirst("span.epx")
-                        ?.ownText()
-                        ?.replace(Regex("\\D"), "")
-                        ?.trim()
-                        ?.toIntOrNull()
+        // Episode badge sometimes shown as "EP N" or "EPISODE N" inside the card.
+        val epNum = this.selectFirst("[class*=badge]")?.text()
+            ?.let { Regex("(\\d+)").find(it)?.value?.toIntOrNull() }
+        // Rating shown as "★ 8.5" — ignore for search response.
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
             addSub(epNum)
@@ -102,73 +101,96 @@ class AnimeIndo : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val anime = mutableListOf<SearchResponse>()
-        (1..2).forEach { page ->
-            val document = app.get("$mainUrl/?s=$query").document
-            val media =
-                    document.select("article.bs").mapNotNull {
-                        val title = it.selectFirst("div.tt")!!.ownText().trim()
-                        val href = it.selectFirst("a")!!.attr("href")
-                        val posterUrl = it.selectFirst("div.limit > img")!!.attr("src")
-                        val type = getType(it.select("div.type").text().trim())
-                        newAnimeSearchResponse(title, href, type) { this.posterUrl = posterUrl }
-                    }
-            if (media.isNotEmpty()) anime.addAll(media)
-        }
-        return anime
+        // [FIXED]: search endpoint baru = /search?q=...
+        val document = runCatching {
+            app.get("$mainUrl/search?q=${query.replace(" ", "+")}").document
+        }.getOrNull() ?: return emptyList()
+        return document.select("a.card-netflix").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
-        val title =
-                document.selectFirst("h1.entry-title")
-                        ?.text()
-                        ?.replace("Subtitle Indonesia", "")
-                        ?.trim()
-                        ?: return null
-        val poster = document.selectFirst("div.thumb > img[itemprop=image]")?.attr("src")
-        val tags = document.select("div.genxed > a").map { it.text() }
-        val type =
-                getType(
-                        document.selectFirst("div.info-content > div.spe > span:contains(Type:)")
-                                ?.ownText()
-                                ?.trim()
-                                ?.lowercase()
-                                ?: "tv"
-                )
-        val year =
-                document.selectFirst("div.info-content > div.spe > span:contains(Released:)")
-                        ?.ownText()
-                        ?.let {
-                            Regex("\\d,\\s(\\d*)").find(it)?.groupValues?.get(1)?.toIntOrNull()
-                        }
-        val status =
-                getStatus(
-                        document.selectFirst("div.info-content > div.spe > span:nth-child(1)")!!
-                                .ownText()
-                                .trim()
-                )
-        val description = document.select("div[itemprop=description] > p").text()
 
-        val trailer = document.selectFirst("div.player-embed iframe")?.attr("src")
-        val episodes =
-            document.select("div.eplister ul li")
-                .mapNotNull { element ->
-                    val headerAnchor = element.selectFirst("a") ?: return@mapNotNull null
-                    val episodeTitleText = headerAnchor.text().trim()
-                    val link = fixUrl(headerAnchor.attr("href"))
-                    val episodeNumber = episodeTitleText.replace("Episode", "", ignoreCase = true).trim().toIntOrNull()
-                    val runTimeString = element.selectFirst("span.duration")?.text()
-                    newEpisode(link) {
-                        this.data = link
-                        this.name = episodeTitleText
-                        this.episode = episodeNumber
-                    }
+        // [FIXED]: title sekarang di <h1> generik dengan class display.
+        val title = document.selectFirst("h1")?.text()?.trim()
+            ?.removeSuffix("Subtitle Indonesia")?.trim()
+            ?: return null
+
+        // [FIXED]: poster dari og:image meta atau <img> di hero section.
+        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: document.selectFirst("img[alt][src*=poster]")?.attr("src")
+            ?: document.selectFirst("article img")?.attr("src")
+
+        // [FIXED]: metadata sekarang dalam struktur <dl><div><dt>Label</dt><dd>Value</dd>...
+        // Helper untuk lookup value berdasarkan label text.
+        fun getMetaValue(label: String): String? {
+            return document.select("dl div").firstOrNull { div ->
+                div.selectFirst("dt")?.text()?.trim()?.equals(label, ignoreCase = true) == true
+            }?.selectFirst("dd")?.text()?.trim()?.takeIf { it.isNotBlank() }
+        }
+
+        // [FIXED]: genre dari <a href*=/genre/> di dalam article header.
+        val tags = document.select("a[href*=/genre/]")
+            .map { it.text().trim() }
+            .filter { it.isNotEmpty() && it.length < 30 }
+            .distinct()
+            .takeIf { it.isNotEmpty() }
+
+        // [FIXED]: type dari TvType badge (TV/Movie/ONA/OVA) — terlihat di
+        // span sebelum h1, atau dari kartu detail.
+        val typeText = document.select("span").map { it.text().trim() }
+            .firstOrNull { it.uppercase() in listOf("TV", "MOVIE", "ONA", "OVA", "SPECIAL") }
+        val type = getType(typeText)
+
+        // [FIXED]: status dari label "ONGOING/COMPLETED" badge.
+        val statusText = document.select("span").map { it.text().trim() }
+            .firstOrNull { it.uppercase() in listOf("ONGOING", "COMPLETED", "TBA") }
+        val status = getStatus(statusText)
+
+        // [FIXED]: year dari link <a href*=/tahun/> atau dari <span>2025</span> di header.
+        val year = document.selectFirst("a[href*=/tahun/]")?.text()?.trim()?.toIntOrNull()
+            ?: document.select("span").map { it.text().trim() }
+                .firstOrNull { it.matches(Regex("(19|20)\\d{2}")) }?.toIntOrNull()
+
+        // [FIXED]: durasi dari Durasi field.
+        val duration = getMetaValue("Durasi")
+            ?.let { Regex("(\\d+)").find(it)?.value?.toIntOrNull() }
+
+        // [FIXED]: score dari ★ rating di header — text "★ 8.5".
+        val score = document.text().let { full ->
+            Regex("★\\s*(\\d+(?:\\.\\d+)?)").find(full)?.groupValues?.get(1)
+        }
+
+        // [FIXED]: synopsis dari <h2>Sinopsis</h2> diikuti div.prose.
+        val description = document.selectFirst("div.prose")?.text()?.trim()
+            ?: document.selectFirst("section:has(h2:contains(Sinopsis)) div")?.text()?.trim()
+            ?: document.selectFirst("meta[name=description]")?.attr("content")?.trim()
+
+        // [FIXED]: episode list di section#episode-list, setiap episode adalah <a>
+        // dengan <div class="text-sm font-bold">Episode N</div>.
+        val episodes = document.select("section#episode-list a[href]")
+            .ifEmpty { document.select("a[href]:has(div:matchesOwn(^Episode\\s*\\d+))") }
+            .mapNotNull { ep ->
+                val epHref = ep.attr("href").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val epLink = if (epHref.startsWith("http")) epHref else "$mainUrl${epHref.removePrefix("/").let { "/$it" }}"
+                val epTitle = ep.selectFirst("div")?.text()?.trim()
+                    ?: ep.text().trim().substringBefore("\n").trim()
+                val epNum = Regex("Episode\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: epTitle.filter { it.isDigit() }.toIntOrNull()
+                newEpisode(epLink) {
+                    this.name = epTitle
+                    this.episode = epNum
                 }
-                .reversed()
+            }
+            .distinctBy { it.data }
+            .reversed()
 
-        val recommendations =
-                document.select("div.relat div.animposx").mapNotNull { it.toSearchResult() }
+        // [FIXED]: rekomendasi dari section "Anime Mirip".
+        val recommendations = document.select("section:has(h2:contains(Anime Mirip)) a.card-netflix")
+            .ifEmpty { document.select("section:has(h2:contains(Mirip)) a[href]") }
+            .mapNotNull { it.toSearchResult() }
+            .take(20)
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year)
 
@@ -177,37 +199,63 @@ class AnimeIndo : MainAPI() {
             posterUrl = tracker?.image ?: poster
             backgroundPosterUrl = tracker?.cover
             this.year = year
+            this.duration = duration
+            score?.let { addScore(it) }
             addEpisodes(DubStatus.Subbed, episodes)
             showStatus = status
             plot = description
             this.tags = tags
             this.recommendations = recommendations
-            addTrailer(trailer)
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
         }
     }
 
     override suspend fun loadLinks(
-            data: String,
-            isCasting: Boolean,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // [FIXED]: tidak ada lagi mirror dropdown base64-encoded. Halaman episode
+        // sekarang merender langsung beberapa <iframe> dengan src ke pixeldrain,
+        // mega.nz, dan provider lain. Ambil semua iframe, dedup, lalu serahkan
+        // ke loadExtractor — pixeldrain dengan ?embed perlu dikonversi ke direct
+        // streaming URL agar CloudStream dapat memutar.
+        val document = runCatching { app.get(data).document }.getOrNull() ?: return false
 
-        val document = app.get(data).document
-        document.select("div.mobius > select.mirror > option")
-                .mapNotNull {
-                    fixUrl(Jsoup.parse(base64Decode(it.attr("value"))).select("iframe").attr("src"))
-                }
-                .amap {
-                    if (it.startsWith(mainUrl)) {
-                        app.get(it, referer = "$mainUrl/").document.select("iframe").attr("src")
-                    } else {
-                        it
+        val iframes = document.select("iframe[src]")
+            .mapNotNull { it.attr("src").takeIf { src -> src.isNotBlank() } }
+            .distinct()
+
+        if (iframes.isEmpty()) return false
+
+        iframes.amap { rawSrc ->
+            val src = httpsify(rawSrc)
+            runCatching {
+                when {
+                    // pixeldrain.com/u/<id>?embed → langsung jadi /api/file/<id>
+                    src.contains("pixeldrain.com", ignoreCase = true) -> {
+                        val id = Regex("pixeldrain\\.com/u/([\\w-]+)").find(src)
+                            ?.groupValues?.get(1)
+                        if (id != null) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    "Pixeldrain",
+                                    "Pixeldrain",
+                                    "https://pixeldrain.com/api/file/$id?download"
+                                ) {
+                                    this.referer = "$mainUrl/"
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                        }
                     }
+                    // mega.nz/embed/<id> dan provider lain — coba extractor bawaan.
+                    else -> loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
                 }
-                .amap { loadExtractor(httpsify(it), data, subtitleCallback, callback) }
+            }
+        }
 
         return true
     }

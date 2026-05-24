@@ -23,12 +23,17 @@ class DramaSerial : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Latest Movie",
-        "$mainUrl/Genre/ongoing/page/" to "Ongoing",
-        "$mainUrl/Genre/drama-serial-korea/page/" to "Drama Serial Korea",
-        "$mainUrl/Genre/drama-serial-jepang/page/" to "Drama Serial Jepang",
-        "$mainUrl/Genre/drama-serial-mandarin/page/" to "Drama Serial Mandarin",
-        "$mainUrl/Genre/drama-serial-filipina/page/" to "Drama Serial Filipina",
-        "$mainUrl/Genre/drama-serial-india/page/" to "Drama Serial India",
+        // [FIXED]: URL pattern Genre/<slug> redirect 301; pattern aktif adalah /kategori-film/<slug>/
+        "$mainUrl/kategori-film/ongoing/page/" to "Ongoing",
+        "$mainUrl/kategori-film/box-office/page/" to "Box Office",
+        "$mainUrl/kategori-film/drama-serial-korea/page/" to "Drama Serial Korea",
+        "$mainUrl/kategori-film/drama-serial-jepang/page/" to "Drama Serial Jepang",
+        "$mainUrl/kategori-film/drama-serial-mandarin/page/" to "Drama Serial Mandarin",
+        "$mainUrl/kategori-film/drama-serial-china/page/" to "Drama Serial China",
+        "$mainUrl/kategori-film/drama-serial-thailand/page/" to "Drama Serial Thailand",
+        "$mainUrl/kategori-film/drama-serial-india/page/" to "Drama Serial India",
+        "$mainUrl/kategori-film/drama-serial-barat/page/" to "Drama Serial Barat",
+        "$mainUrl/kategori-film/anime/page/" to "Anime",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

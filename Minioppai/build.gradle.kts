@@ -1,12 +1,12 @@
 // use an integer for version numbers
-version = 12
+version = 13
 
 
 cloudstream {
     language = "id"
-    // All of these properties are optional, you can safely remove them
+    description = "Source mati permanen — minioppai.org tidak resolve. " +
+        "Plugin tetap dipertahankan untuk historikal namun status diset Down."
 
-    // description = "Lorem Ipsum"
      authors = listOf("Sora", "TeKuma25")
 
     /**
@@ -16,7 +16,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      * */
-    status = 1 // will be 3 if unspecified
+    status = 0 // [FIXED]: domain DEAD per audit Mei 2026
     tvTypes = listOf(
         "NSFW",
     )

@@ -43,6 +43,11 @@ class AnimeSail : MainAPI() {
     }
 
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
+        // [NOTE]: AnimeSail dilindungi oleh Cloudflare Turnstile yang
+        // membutuhkan token JS. Cookie "_as_ipin_ct=ID" hanya melewati
+        // pengecekan geo, bukan Turnstile. CloudStream akan menyelesaikan
+        // tantangan Cloudflare otomatis via WebView interceptor di sisi
+        // klien — endpoint ini hanya bertanggung jawab atas geo bypass.
         return app.get(
             url,
             headers =

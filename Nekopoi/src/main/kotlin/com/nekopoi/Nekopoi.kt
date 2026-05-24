@@ -141,11 +141,18 @@ class Nekopoi : MainAPI() {
             // Portrait posters (search/genre/category)
             searchItems to false
         } else {
-            // Strategy 2: Current homepage layout — div.nk-post-card grid inside
-            // the "Episode Terbaru" section. Each card has a thumb-crop background
-            // image and a meta block with the h2 title link and date.
-            val postCardItems = document.select("div.nk-episodes-area div.nk-post-card, #nk-episode-grid div.nk-post-card, div.nk-post-card")
-                .mapNotNull { it.toPostCardResult() }
+            // Strategy 2: Current homepage layout — div.nk-post-card grid HANYA
+            // di dalam section "Episode Terbaru". Section "INFO TERKINI" memakai
+            // markup yang sama (nk-post-card), tetapi berisi pengumuman lama
+            // (mis. "Selamat Tahun Baru 2022", "Happy 6th Anniversary", dst.)
+            // yang tidak relevan untuk row "Terbaru". Kita batasi pencocokan ke
+            // container resmi "nk-episodes-area" / "#nk-episode-grid" agar
+            // konten pengumuman tidak ikut tampil.
+            val postCardItems = document.select(
+                "div.nk-episodes-area #nk-episode-grid div.nk-post-card, " +
+                "#nk-episode-grid div.nk-post-card, " +
+                "div.nk-episodes-area div.nk-post-card"
+            ).mapNotNull { it.toPostCardResult() }
             if (postCardItems.isNotEmpty()) {
                 postCardItems to true
             } else {
@@ -925,8 +932,11 @@ class Nekopoi : MainAPI() {
                     // (network error, captcha failure, changed page structure) does not
                     // crash the entire download processing — we simply skip that mirror
                     // and continue with the remaining ones (Requirements 5.3, 5.4, 5.6).
+                    // [FIXED]: hapus filter 360p — user diberi kontrol penuh atas
+                    // kualitas yang dipilih. Sebelumnya 360p dilewati otomatis,
+                    // tetapi pada koneksi terbatas ini justru menghapus opsi
+                    // ringan yang berguna.
                     downloadPairs
-                        .filter { it.first != Qualities.P360.value }
                         .map { (quality, ouoUrl) ->
                             // Validate that the ouo.io URL looks correct before attempting bypass
                             if (ouoUrl.isBlank() || !ouoUrl.contains("ouo.io")) return@map
@@ -956,6 +966,26 @@ class Nekopoi : MainAPI() {
 
                             fileLinks.amap ads@{ adsLink ->
                                 try {
+                                    // [FIXED]: Pixeldrain `https://pixeldrain.com/u/<id>`
+                                    // bisa diputar langsung sebagai stream via
+                                    // /api/file/<id>?download. Tambahkan link
+                                    // ini sebagai source ekstra agar user
+                                    // dapat memutar tanpa harus download.
+                                    val pixelMatch = Regex("pixeldrain\\.com/u/([\\w-]+)")
+                                        .find(adsLink)?.groupValues?.getOrNull(1)
+                                    if (pixelMatch != null) {
+                                        callback.invoke(
+                                            newExtractorLink(
+                                                "Pixeldrain",
+                                                "Pixeldrain",
+                                                "https://pixeldrain.com/api/file/$pixelMatch?download"
+                                            ) {
+                                                this.referer = "$mainUrl/"
+                                                this.quality = quality
+                                            }
+                                        )
+                                    }
+
                                     val embedUrl = fixEmbed(adsLink) ?: return@ads
                                     coroutineScope {
                                         loadExtractor(

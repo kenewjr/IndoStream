@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 13
+version = 14
 
 cloudstream {
     language = "id"
@@ -22,5 +22,5 @@ cloudstream {
         "Anime",
     )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=animasu.cc&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=v1.animasu.work&sz=%size%"
 }

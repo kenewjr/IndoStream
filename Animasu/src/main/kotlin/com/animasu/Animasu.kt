@@ -15,7 +15,10 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class Animasu : MainAPI() {
-    override var mainUrl = "https://v1.animasu.top"
+    // [FIXED]: domain canonical sekarang adalah v1.animasu.work — homepage di
+    // v1.animasu.top masih hidup tapi semua link konten dirender pakai .work,
+    // sehingga jika kita pakai .top maka URL detail/episode sering 404.
+    override var mainUrl = "https://v1.animasu.work"
     override var name = "Animasu"
     override val hasMainPage = true
     override var lang = "id"

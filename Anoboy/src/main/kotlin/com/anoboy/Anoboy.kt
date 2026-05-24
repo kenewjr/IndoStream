@@ -136,17 +136,45 @@ class Anoboy : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // [FIXED]: Anoboy v2.x menggunakan single iframe dengan data-src yang
+        // mengarah ke /uploads/adsbatch720.php?url=<token>&origin=<host>.
+        // Server lama gomunimes.com sudah tidak digunakan; sekarang origin
+        // adalah Blogspot mirror. Kita ambil iframe dengan data-src maupun src,
+        // resolve URL absolut, lalu serahkan ke loadExtractor.
+        val document = runCatching { app.get(data).document }.getOrNull() ?: return false
 
-        val document = app.get(data).document
-        document.select("div.player-container iframe").attr("src").substringAfter("html#")
-            .let { id ->
-                app.get("https://gomunimes.com/stream?id=$id")
-                    .parsedSafe<Sources>()?.server?.streamsb?.link?.let { link ->
-                        loadExtractor(link.replace("vidgomunimesb.xyz", "watchsb.com"), mainUrl, subtitleCallback, callback)
+        val iframeSources = document.select("iframe")
+            .mapNotNull { iframe ->
+                val src = iframe.attr("data-src").takeIf { it.isNotBlank() }
+                    ?: iframe.attr("src").takeIf { it.isNotBlank() }
+                src?.let { raw ->
+                    when {
+                        raw.startsWith("http") -> raw
+                        raw.startsWith("//") -> "https:$raw"
+                        raw.startsWith("/") -> "$mainUrl$raw"
+                        else -> "$mainUrl/$raw"
                     }
+                }
             }
+            .distinct()
 
-        return true
+        iframeSources.amap { src ->
+            runCatching {
+                // /uploads/adsbatch*.php?url=...&origin=<host> — fetch the page,
+                // parse the inner iframe yang sebenarnya jadi player embed.
+                if (src.contains("/uploads/adsbatch", ignoreCase = true)) {
+                    val innerDoc = app.get(src, referer = data).document
+                    val realIframe = innerDoc.selectFirst("iframe[src]")?.attr("src")
+                    if (!realIframe.isNullOrBlank()) {
+                        loadExtractor(realIframe, mainUrl, subtitleCallback, callback)
+                    }
+                } else {
+                    loadExtractor(src, mainUrl, subtitleCallback, callback)
+                }
+            }
+        }
+
+        return iframeSources.isNotEmpty()
     }
 
     data class Streamsb(
