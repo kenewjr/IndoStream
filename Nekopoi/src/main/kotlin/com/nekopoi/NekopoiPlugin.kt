@@ -1,11 +1,11 @@
 package com.nekopoi
 
+import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
-import android.content.Context
 
 @CloudstreamPlugin
-class NekopoiPlugin: Plugin() {
+class NekopoiPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Nekopoi())
         registerExtractorAPI(ZippyShare())

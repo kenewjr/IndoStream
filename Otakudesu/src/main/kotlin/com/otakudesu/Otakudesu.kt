@@ -29,46 +29,51 @@ class Otakudesu : MainAPI() {
     companion object {
         const val acefile = "https://acefile.co"
         val mirrorBlackList =
-                arrayOf(
-                        "Mega",
-                        "MegaUp",
-                        "Otakufiles",
-                )
+            arrayOf(
+                "Mega",
+                "MegaUp",
+                "Otakufiles",
+            )
 
         fun getType(t: String?): TvType {
             if (t == null) return TvType.Anime
-            return if (t.contains("OVA", true) || t.contains("Special")) TvType.OVA
-            else if (t.contains("Movie", true)) TvType.AnimeMovie else TvType.Anime
+            return if (t.contains("OVA", true) || t.contains("Special")) {
+                TvType.OVA
+            } else if (t.contains("Movie", true)) {
+                TvType.AnimeMovie
+            } else {
+                TvType.Anime
+            }
         }
 
-        fun getStatus(t: String?): ShowStatus {
-            return when {
-                t == null -> ShowStatus.Completed
-                t.contains("Ongoing", true) -> ShowStatus.Ongoing
-                t.contains("Completed", true) -> ShowStatus.Completed
-                else -> ShowStatus.Completed
-            }
+        fun getStatus(t: String?): ShowStatus = when {
+            t == null -> ShowStatus.Completed
+            t.contains("Ongoing", true) -> ShowStatus.Ongoing
+            t.contains("Completed", true) -> ShowStatus.Completed
+            else -> ShowStatus.Completed
         }
     }
 
     override val mainPage =
-            mainPageOf(
-                    "$mainUrl/ongoing-anime/page/" to "Anime Ongoing",
-                    "$mainUrl/complete-anime/page/" to "Anime Completed",
-                    // [ENHANCED]: pintasan genre populer.
-                    "$mainUrl/genres/action/page/" to "Genre: Action",
-                    "$mainUrl/genres/adventure/page/" to "Genre: Adventure",
-                    "$mainUrl/genres/comedy/page/" to "Genre: Comedy",
-                    "$mainUrl/genres/drama/page/" to "Genre: Drama",
-                    "$mainUrl/genres/fantasy/page/" to "Genre: Fantasy",
-                    "$mainUrl/genres/romance/page/" to "Genre: Romance",
-                    "$mainUrl/genres/school/page/" to "Genre: School",
-                    "$mainUrl/genres/slice-of-life/page/" to "Genre: Slice of Life",
-                    "$mainUrl/genres/supernatural/page/" to "Genre: Supernatural",
-                    "$mainUrl/genres/mecha/page/" to "Genre: Mecha"
-            )
+        mainPageOf(
+            "$mainUrl/ongoing-anime/page/" to "Anime Ongoing",
+            "$mainUrl/complete-anime/page/" to "Anime Completed",
+            "$mainUrl/genres/action/page/" to "Genre: Action",
+            "$mainUrl/genres/adventure/page/" to "Genre: Adventure",
+            "$mainUrl/genres/comedy/page/" to "Genre: Comedy",
+            "$mainUrl/genres/drama/page/" to "Genre: Drama",
+            "$mainUrl/genres/fantasy/page/" to "Genre: Fantasy",
+            "$mainUrl/genres/romance/page/" to "Genre: Romance",
+            "$mainUrl/genres/school/page/" to "Genre: School",
+            "$mainUrl/genres/slice-of-life/page/" to "Genre: Slice of Life",
+            "$mainUrl/genres/supernatural/page/" to "Genre: Supernatural",
+            "$mainUrl/genres/mecha/page/" to "Genre: Mecha",
+        )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest,
+    ): HomePageResponse {
         val document = app.get(request.data + page).document
         val home = document.select("div.venz > ul > li").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, home)
@@ -77,14 +82,21 @@ class Otakudesu : MainAPI() {
     private fun Element.toSearchResult(): AnimeSearchResponse? {
         val title = this.selectFirst("h2.jdlflm")?.text()?.trim() ?: return null
         val href = this.selectFirst("a")?.attr("href") ?: return null
-        val posterUrl = this.selectFirst("div.thumbz > img")?.attr("src")
-            ?: this.selectFirst("img")?.attr("src")
-        // [FIX]: ongoing list rendered "Segera Hadir" because ownText() can
-        // return whitespace-only on some markup variants (icon span eats the
-        // text). Use full text() and pull the first integer instead.
-        val epNum = this.selectFirst("div.epz")
-            ?.text()
-            ?.let { Regex("(\\d+)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
+        val posterUrl =
+            this.selectFirst("div.thumbz > img")?.attr("src")
+                ?: this.selectFirst("img")?.attr("src")
+
+        val epNum =
+            this
+                .selectFirst("div.epz")
+                ?.text()
+                ?.let {
+                    Regex("(\\d+)")
+                        .find(it)
+                        ?.groupValues
+                        ?.getOrNull(1)
+                        ?.toIntOrNull()
+                }
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
             addSub(epNum)
@@ -92,27 +104,28 @@ class Otakudesu : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // [ENHANCED]: load semua hasil pencarian dengan pagination penuh.
-        // Sebelumnya hanya halaman pertama saja yang ditampilkan.
-        // Kita iterasi sampai halaman tidak lagi mengembalikan hasil baru
-        // (hard cap 10 halaman untuk menghindari abuse).
         val results = mutableListOf<SearchResponse>()
         val seenHrefs = mutableSetOf<String>()
         for (page in 1..10) {
-            val url = if (page == 1) "$mainUrl/?s=$query&post_type=anime"
-            else "$mainUrl/page/$page/?s=$query&post_type=anime"
-            val pageResults = runCatching { app.get(url).document }.getOrNull()
-                ?.select("ul.chivsrc > li")
-                ?.mapNotNull { li ->
-                    val title = li.selectFirst("h2 > a")?.ownText()?.trim() ?: return@mapNotNull null
-                    val href = li.selectFirst("h2 > a")?.attr("href") ?: return@mapNotNull null
-                    val posterUrl = li.selectFirst("img")?.attr("src")
-                    newAnimeSearchResponse(title, href, TvType.Anime) {
-                        this.posterUrl = posterUrl
-                    }
-                } ?: emptyList()
-            // Stop kalau halaman ini kosong atau semua hasilnya sudah dilihat
-            // (dedupe via href set untuk menangani pagination yang loop).
+            val url =
+                if (page == 1) {
+                    "$mainUrl/?s=$query&post_type=anime"
+                } else {
+                    "$mainUrl/page/$page/?s=$query&post_type=anime"
+                }
+            val pageResults =
+                runCatching { app.get(url).document }
+                    .getOrNull()
+                    ?.select("ul.chivsrc > li")
+                    ?.mapNotNull { li ->
+                        val title = li.selectFirst("h2 > a")?.ownText()?.trim() ?: return@mapNotNull null
+                        val href = li.selectFirst("h2 > a")?.attr("href") ?: return@mapNotNull null
+                        val posterUrl = li.selectFirst("img")?.attr("src")
+                        newAnimeSearchResponse(title, href, TvType.Anime) {
+                            this.posterUrl = posterUrl
+                        }
+                    } ?: emptyList()
+
             val newResults = pageResults.filter { seenHrefs.add(it.url) }
             if (newResults.isEmpty()) break
             results.addAll(newResults)
@@ -123,45 +136,52 @@ class Otakudesu : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Title: try multiple strategies
-        val title = document.selectFirst("div.infozingle > p > span:contains(Judul)")
-                ?.ownText()?.replace(":", "")?.trim()
-            ?: document.selectFirst("h1.jdlrx")?.text()?.trim()
-            ?: document.selectFirst("h1")?.text()
-                ?.removeSuffix("Subtitle Indonesia")?.trim()
-            ?: ""
+        val title =
+            document
+                .selectFirst("div.infozingle > p > span:contains(Judul)")
+                ?.ownText()
+                ?.replace(":", "")
+                ?.trim()
+                ?: document.selectFirst("h1.jdlrx")?.text()?.trim()
+                ?: document
+                    .selectFirst("h1")
+                    ?.text()
+                    ?.removeSuffix("Subtitle Indonesia")
+                    ?.trim()
+                ?: ""
 
-        // Poster: try multiple selectors
-        val poster = document.selectFirst("div.fotoanime > img")?.attr("src")
-            ?: document.selectFirst("div.fotoanime img")?.attr("src")
-            ?: document.selectFirst("img.attachment-post-thumbnail")?.attr("src")
+        val poster =
+            document.selectFirst("div.fotoanime > img")?.attr("src")
+                ?: document.selectFirst("div.fotoanime img")?.attr("src")
+                ?: document.selectFirst("img.attachment-post-thumbnail")?.attr("src")
 
-        // Metadata extraction using label-based lookups (robust against reordering)
         val infoElements = document.select("div.infozingle > p")
 
-        fun getInfoByLabel(label: String): String? {
-            return infoElements.firstOrNull { el ->
+        fun getInfoByLabel(label: String): String? = infoElements
+            .firstOrNull { el ->
                 el.selectFirst("span")?.text()?.contains(label, ignoreCase = true) == true
-            }?.selectFirst("span")?.ownText()?.replace(":", "")?.trim()
-                ?.takeIf { it.isNotBlank() }
-        }
+            }?.selectFirst("span")
+            ?.ownText()
+            ?.replace(":", "")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
 
-        fun getInfoLinksByLabel(label: String): List<Element> {
-            return infoElements.firstOrNull { el ->
+        fun getInfoLinksByLabel(label: String): List<Element> = infoElements
+            .firstOrNull { el ->
                 el.selectFirst("span")?.text()?.contains(label, ignoreCase = true) == true
             }?.select("a") ?: emptyList()
-        }
 
-        val tags = getInfoLinksByLabel("Genre").map { it.text().trim() }
-            .filter { it.isNotEmpty() }
-            .ifEmpty {
-                // Fallback: try to parse genre text after ":"
-                getInfoByLabel("Genre")
-                    ?.split(",")
-                    ?.map { it.trim() }
-                    ?.filter { it.isNotEmpty() }
-                    ?: emptyList()
-            }
+        val tags =
+            getInfoLinksByLabel("Genre")
+                .map { it.text().trim() }
+                .filter { it.isNotEmpty() }
+                .ifEmpty {
+                    getInfoByLabel("Genre")
+                        ?.split(",")
+                        ?.map { it.trim() }
+                        ?.filter { it.isNotEmpty() }
+                        ?: emptyList()
+                }
 
         val typeStr = getInfoByLabel("Tipe")
         val type = getType(typeStr)
@@ -169,48 +189,62 @@ class Otakudesu : MainAPI() {
         val statusStr = getInfoByLabel("Status")
         val status = getStatus(statusStr)
 
-        // Year extraction from "Tanggal Rilis" field (e.g., "Apr 03, 2026")
         val releaseDate = getInfoByLabel("Tanggal Rilis") ?: ""
-        val year = Regex("(\\d{4})").find(releaseDate)?.groupValues?.get(1)?.toIntOrNull()
+        val year =
+            Regex("(\\d{4})")
+                .find(releaseDate)
+                ?.groupValues
+                ?.get(1)
+                ?.toIntOrNull()
 
-        // Duration extraction (e.g., "24 min." -> 24)
         val durationStr = getInfoByLabel("Durasi") ?: ""
-        val duration = Regex("(\\d+)").find(durationStr)?.groupValues?.get(1)?.toIntOrNull()
+        val duration =
+            Regex("(\\d+)")
+                .find(durationStr)
+                ?.groupValues
+                ?.get(1)
+                ?.toIntOrNull()
 
-        // Score extraction
         val scoreStr = getInfoByLabel("Skor") ?: ""
 
-        val description = document.select("div.sinopc > p").text().trim()
-            .takeIf { it.isNotBlank() }
-            ?: document.selectFirst("div.sinopc")?.text()?.trim()
+        val description =
+            document
+                .select("div.sinopc > p")
+                .text()
+                .trim()
+                .takeIf { it.isNotBlank() }
+                ?: document.selectFirst("div.sinopc")?.text()?.trim()
 
-        // Episode list: find the episode list section robustly
-        val episodes = document.select("div.episodelist")
+        val episodes =
+            document
+                .select("div.episodelist")
                 .lastOrNull()
                 ?.select("ul > li")
                 ?.mapNotNull {
                     val epName = it.selectFirst("a")?.text() ?: return@mapNotNull null
                     val epLink = fixUrl(it.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
-                    val episodeNumber = Regex("Episode\\s?(\\d+)")
-                            .find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    val episodeNumber =
+                        Regex("Episode\\s?(\\d+)")
+                            .find(epName)
+                            ?.groupValues
+                            ?.getOrNull(1)
+                            ?.toIntOrNull()
                     newEpisode(epLink) {
                         this.name = epName
                         this.episode = episodeNumber
                     }
-                }
-                ?.reversed()
+                }?.reversed()
                 ?: emptyList()
 
-        // Recommendations
         val recommendations =
-                document.select("div.isi-recommend-anime-series > div.isi-konten").mapNotNull {
-                    val recName = it.selectFirst("span.judul-anime > a")?.text() ?: return@mapNotNull null
-                    val recHref = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                    val recPosterUrl = it.selectFirst("a > img")?.attr("src")
-                    newAnimeSearchResponse(recName, recHref, TvType.Anime) {
-                        this.posterUrl = recPosterUrl
-                    }
+            document.select("div.isi-recommend-anime-series > div.isi-konten").mapNotNull {
+                val recName = it.selectFirst("span.judul-anime > a")?.text() ?: return@mapNotNull null
+                val recHref = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                val recPosterUrl = it.selectFirst("a > img")?.attr("src")
+                newAnimeSearchResponse(recName, recHref, TvType.Anime) {
+                    this.posterUrl = recPosterUrl
                 }
+            }
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
@@ -232,136 +266,142 @@ class Otakudesu : MainAPI() {
     }
 
     data class ResponseSources(
-            @JsonProperty("id") val id: String,
-            @JsonProperty("i") val i: String,
-            @JsonProperty("q") val q: String,
+        @JsonProperty("id") val id: String,
+        @JsonProperty("i") val i: String,
+        @JsonProperty("q") val q: String,
     )
 
-    data class ResponseData(@JsonProperty("data") val data: String)
+    data class ResponseData(
+        @JsonProperty("data") val data: String,
+    )
 
     override suspend fun loadLinks(
-            data: String,
-            isCasting: Boolean,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
     ): Boolean {
-
         val document = app.get(data).document
 
         runAllAsync(
-                {
-                    // Streaming: extract mirror sources via AJAX
-                    val scriptData =
-                        document.select("script:containsData(action:)").lastOrNull()?.data()
-                    val token =
-                        scriptData
-                            ?.substringAfter("{action:\"")
-                            ?.substringBefore("\"}")
-                            .toString()
+            {
+                val scriptData =
+                    document.select("script:containsData(action:)").lastOrNull()?.data()
+                val token =
+                    scriptData
+                        ?.substringAfter("{action:\"")
+                        ?.substringBefore("\"}")
+                        .toString()
 
-                    val nonce = try {
-                        app.post(
-                            "$mainUrl/wp-admin/admin-ajax.php",
-                            data = mapOf("action" to token)
-                        ).parsed<ResponseData>().data
-                    } catch (e: Exception) { "" }
+                val nonce =
+                    try {
+                        app
+                            .post(
+                                "$mainUrl/wp-admin/admin-ajax.php",
+                                data = mapOf("action" to token),
+                            ).parsed<ResponseData>()
+                            .data
+                    } catch (e: Exception) {
+                        ""
+                    }
 
-                    val action =
-                        scriptData
-                            ?.substringAfter(",action:\"")
-                            ?.substringBefore("\"}")
-                            .toString()
+                val action =
+                    scriptData
+                        ?.substringAfter(",action:\"")
+                        ?.substringBefore("\"}")
+                        .toString()
 
-                    val mirrorData =
-                        document.select("div.mirrorstream > ul > li")
-                            .mapNotNull {
-                                try {
-                                    base64Decode(it.select("a").attr("data-content"))
-                                } catch (e: Exception) { null }
+                val mirrorData =
+                    document
+                        .select("div.mirrorstream > ul > li")
+                        .mapNotNull {
+                            try {
+                                base64Decode(it.select("a").attr("data-content"))
+                            } catch (e: Exception) {
+                                null
                             }
-                            .toString()
+                        }.toString()
 
-                    tryParseJson<List<ResponseSources>>(mirrorData)?.amap { res ->
-                        try {
-                            val id = res.id
-                            val i = res.i
-                            val q = res.q
+                tryParseJson<List<ResponseSources>>(mirrorData)?.amap { res ->
+                    try {
+                        val id = res.id
+                        val i = res.i
+                        val q = res.q
 
-                            val sources =
-                                Jsoup.parse(
+                        val sources =
+                            Jsoup
+                                .parse(
                                     base64Decode(
-                                        app.post(
-                                            "${mainUrl}/wp-admin/admin-ajax.php",
-                                            data =
+                                        app
+                                            .post(
+                                                "$mainUrl/wp-admin/admin-ajax.php",
+                                                data =
                                                 mapOf(
                                                     "id" to id,
                                                     "i" to i,
                                                     "q" to q,
                                                     "nonce" to nonce,
-                                                    "action" to action
-                                                )
-                                        ).parsed<ResponseData>().data
-                                    )
-                                ).select("iframe").attr("src")
+                                                    "action" to action,
+                                                ),
+                                            ).parsed<ResponseData>()
+                                            .data,
+                                    ),
+                                ).select("iframe")
+                                .attr("src")
 
-                            if (sources.isNotBlank()) {
+                        if (sources.isNotBlank()) {
+                            loadCustomExtractor(
+                                sources,
+                                data,
+                                subtitleCallback,
+                                callback,
+                                getQuality(q),
+                            )
+                        }
+                    } catch (e: Exception) {
+                    }
+                }
+            },
+            {
+                document.select("div.download li").map { ele ->
+                    val quality = getQuality(ele.select("strong").text())
+                    ele
+                        .select("a")
+                        .map { it.attr("href") to it.text() }
+                        .filter {
+                            it.first.isNotBlank() &&
+                                !inBlacklist(it.second) &&
+                                quality != Qualities.P360.value
+                        }.amap {
+                            try {
+                                val link = app.get(it.first, referer = "$mainUrl/").url
                                 loadCustomExtractor(
-                                    sources,
+                                    fixedIframe(link),
                                     data,
                                     subtitleCallback,
                                     callback,
-                                    getQuality(q)
+                                    quality,
                                 )
+                            } catch (e: Exception) {
                             }
-                        } catch (e: Exception) {
-                            // Skip failed mirror sources
                         }
-                    }
-                },
-                {
-                    // Downloads: extract download links with quality info
-                    document.select("div.download li").map { ele ->
-                        val quality = getQuality(ele.select("strong").text())
-                        ele.select("a")
-                            .map { it.attr("href") to it.text() }
-                            .filter {
-                                it.first.isNotBlank() &&
-                                !inBlacklist(it.second) &&
-                                quality != Qualities.P360.value
-                            }
-                            .amap {
-                                try {
-                                    val link = app.get(it.first, referer = "$mainUrl/").url
-                                    loadCustomExtractor(
-                                        fixedIframe(link),
-                                        data,
-                                        subtitleCallback,
-                                        callback,
-                                        quality
-                                    )
-                                } catch (e: Exception) {
-                                    // Skip failed download links
-                                }
-                            }
-                    }
                 }
-            )
+            },
+        )
 
         return true
     }
 
     private suspend fun loadCustomExtractor(
-            url: String,
-            referer: String? = null,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit,
-            quality: Int = Qualities.Unknown.value,
+        url: String,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+        quality: Int = Qualities.Unknown.value,
     ) = coroutineScope {
-        // [FIXED]: kalau stock loadExtractor tidak kenal embed host (desustream
-        // variants, blogger video.g, custom mirrors), callback tidak dipanggil
-        // → user lihat "Link loading failed". Pakai counter, kalau zero hits
-        // → register iframe URL itu sendiri supaya WebView player bisa coba.
-        val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val resolvedCount =
+            java.util.concurrent.atomic
+                .AtomicInteger(0)
         try {
             loadExtractor(url, referer, subtitleCallback) { link ->
                 resolvedCount.incrementAndGet()
@@ -371,49 +411,48 @@ class Otakudesu : MainAPI() {
                             link.name,
                             link.name,
                             link.url,
-                            link.type
+                            link.type,
                         ) {
                             this.referer = link.referer
                             this.quality = quality
                             this.headers = link.headers
                             this.extractorData = link.extractorData
-                        }
+                        },
                     )
                 }
             }
         } catch (_: Exception) {
-            // Extractor crashed — fall through to fallback below.
         }
         if (resolvedCount.get() == 0) {
-            val host = runCatching { java.net.URI(url).host }.getOrNull()
-                ?.removePrefix("www.") ?: "Embed"
+            val host =
+                runCatching { java.net.URI(url).host }
+                    .getOrNull()
+                    ?.removePrefix("www.") ?: "Embed"
             callback.invoke(
                 newExtractorLink(host, host, url) {
                     this.referer = referer ?: "$mainUrl/"
                     this.quality = quality
-                }
+                },
             )
         }
     }
 
-    private fun fixedIframe(url: String): String {
-        return when {
-            url.startsWith(acefile) -> {
-                val id = Regex("""(?:/f/|/file/)(\w+)""").find(url)?.groupValues?.getOrNull(1)
-                if (id != null) "${acefile}/player/$id" else url
-            }
-            else -> fixUrl(url)
+    private fun fixedIframe(url: String): String = when {
+        url.startsWith(acefile) -> {
+            val id = Regex("""(?:/f/|/file/)(\w+)""").find(url)?.groupValues?.getOrNull(1)
+            if (id != null) "$acefile/player/$id" else url
         }
+        else -> fixUrl(url)
     }
 
-    private fun inBlacklist(host: String?): Boolean {
-        return mirrorBlackList.any { it.equals(host, true) }
-    }
+    private fun inBlacklist(host: String?): Boolean = mirrorBlackList.any { it.equals(host, true) }
 
-    private fun getQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Qualities.Unknown.value
-    }
+    private fun getQuality(str: String?): Int = Regex("(\\d{3,4})[pP]")
+        .find(str ?: "")
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+        ?: Qualities.Unknown.value
 }
 
 class Moedesu : JWPlayer() {

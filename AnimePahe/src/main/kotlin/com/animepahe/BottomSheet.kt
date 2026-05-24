@@ -17,61 +17,63 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 
-class BottomFragment(private val plugin: AnimePaheProviderPlugin) : BottomSheetDialogFragment() {
-
+class BottomFragment(
+    private val plugin: AnimePaheProviderPlugin,
+) : BottomSheetDialogFragment() {
     @SuppressLint("UseCompatLoadingForDrawables")
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View? {
-        val id = plugin.resources!!.getIdentifier(
-            "bottom_sheet_layout",
-            "layout",
-            BuildConfig.LIBRARY_PACKAGE_NAME
-        )
+        val id =
+            plugin.resources!!.getIdentifier(
+                "bottom_sheet_layout",
+                "layout",
+                BuildConfig.LIBRARY_PACKAGE_NAME,
+            )
         val layout = plugin.resources!!.getLayout(id)
         val view = inflater.inflate(layout, container, false)
 
-        val outlineId = plugin.resources!!.getIdentifier(
-            "outline",
-            "drawable",
-            BuildConfig.LIBRARY_PACKAGE_NAME
-        )
+        val outlineId =
+            plugin.resources!!.getIdentifier(
+                "outline",
+                "drawable",
+                BuildConfig.LIBRARY_PACKAGE_NAME,
+            )
 
-        // Save button
-        val saveIconId = plugin.resources!!.getIdentifier(
-            "save_icon",
-            "drawable",
-            BuildConfig.LIBRARY_PACKAGE_NAME
-        )
+        val saveIconId =
+            plugin.resources!!.getIdentifier(
+                "save_icon",
+                "drawable",
+                BuildConfig.LIBRARY_PACKAGE_NAME,
+            )
         val saveBtn = view.findView<ImageView>("save")
         saveBtn.setImageDrawable(plugin.resources!!.getDrawable(saveIconId, null))
         saveBtn.background = plugin.resources!!.getDrawable(outlineId, null)
         saveBtn.setOnClickListener {
             context?.let { ctx ->
-                AlertDialog.Builder(ctx)
+                AlertDialog
+                    .Builder(ctx)
                     .setTitle("Restart App?")
                     .setMessage("Save changes and restart the app?")
                     .setPositiveButton("Yes") { _, _ ->
                         restartApp(ctx)
-                    }
-                    .setNegativeButton("No") { dialog, _ ->
+                    }.setNegativeButton("No") { dialog, _ ->
                         dialog.dismiss()
                         Toast.makeText(ctx, "Changes saved", Toast.LENGTH_SHORT).show()
                         dismiss()
-                    }
-                    .show()
+                    }.show()
             }
         }
 
-        // Server selection radio buttons
         val serverGroup = view.findView<RadioGroup>("server_group")
-        val radioBtnId = plugin.resources!!.getIdentifier(
-            "radio_button",
-            "layout",
-            BuildConfig.LIBRARY_PACKAGE_NAME
-        )
+        val radioBtnId =
+            plugin.resources!!.getIdentifier(
+                "radio_button",
+                "layout",
+                BuildConfig.LIBRARY_PACKAGE_NAME,
+            )
         ServerList.entries.forEach { server ->
             val radioBtnLayout = plugin.resources!!.getLayout(radioBtnId)
             val radioBtnView = inflater.inflate(radioBtnLayout, container, false)

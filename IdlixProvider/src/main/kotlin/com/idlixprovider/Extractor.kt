@@ -20,19 +20,24 @@ class Jeniusplay : ExtractorApi() {
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
     ) {
         val document = app.get(url, referer = referer).document
         val hash = url.split("/").last().substringAfter("data=")
 
-        val m3uLink = app.post(
-            url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf("hash" to hash, "r" to "$referer"),
-            referer = referer,
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsed<ResponseSource>().videoSource.replace(".txt",".m3u8")
+        val m3uLink =
+            app
+                .post(
+                    url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
+                    data = mapOf("hash" to hash, "r" to "$referer"),
+                    referer = referer,
+                    headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
+                ).parsed<ResponseSource>()
+                .videoSource
+                .replace(".txt", ".m3u8")
 
-        generateM3u8(name,
+        generateM3u8(
+            name,
             m3uLink,
             mainUrl,
         ).forEach(callback)
@@ -45,8 +50,8 @@ class Jeniusplay : ExtractorApi() {
                     subtitleCallback.invoke(
                         newSubtitleFile(
                             getLanguage(subtitle.label ?: ""),
-                            subtitle.file
-                        )
+                            subtitle.file,
+                        ),
                     )
                 }
             }
@@ -64,12 +69,12 @@ class Jeniusplay : ExtractorApi() {
         @param:JsonProperty("file") val file: String,
         @param:JsonProperty("label") val label: String?,
     )
-    private fun getLanguage(str: String): String {
-        return when {
-            str.contains("indonesia", true) || str
+
+    private fun getLanguage(str: String): String = when {
+        str.contains("indonesia", true) ||
+            str
                 .contains("bahasa", true) -> "Indonesian"
-            else -> str
-        }
+        else -> str
     }
 }
 
@@ -82,7 +87,7 @@ class Majorplay : ExtractorApi() {
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
     ) {
         val document = app.get(url, referer = mainUrl).document
         val m3uLink = document.select("source").attr("src")
@@ -103,7 +108,7 @@ class Majorplay : ExtractorApi() {
 
             subtitleCallback.invoke(
                 newSubtitleFile
-                    (label, vttUrl)
+                (label, vttUrl),
             )
         }
     }

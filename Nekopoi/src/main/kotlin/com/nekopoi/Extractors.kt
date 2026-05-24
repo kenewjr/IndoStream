@@ -15,18 +15,18 @@ open class ZippyShare : ExtractorApi() {
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
     ) {
         val res = app.get(url, referer = referer).document
         val video = res.selectFirst("a#download-url")?.attr("href")
         callback.invoke(
-			newExtractorLink(
+            newExtractorLink(
                 name,
                 name,
-                video ?: return
-            ){
-				this.referer = "$mainUrl/"
-			}
+                video ?: return,
+            ) {
+                this.referer = "$mainUrl/"
+            },
         )
     }
 }

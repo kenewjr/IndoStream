@@ -10,31 +10,32 @@ open class Qiwi : ExtractorApi() {
     override val requiresReferer = true
 
     override suspend fun getUrl(
-            url: String,
-            referer: String?,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
     ) {
         val document = app.get(url, referer = referer).document
         val title = document.select("title").text()
         val source = document.select("video source").attr("src")
 
         callback.invoke(
-			newExtractorLink(
-                    name,
-                    name,
-                    source
-                ){
-					this.referer = "$mainUrl/"
-					this.quality = getIndexQuality(title)
-					this.headers = mapOf("Range" to "bytes=0-")
-				}
-                
+            newExtractorLink(
+                name,
+                name,
+                source,
+            ) {
+                this.referer = "$mainUrl/"
+                this.quality = getIndexQuality(title)
+                this.headers = mapOf("Range" to "bytes=0-")
+            },
         )
     }
 
-    private fun getIndexQuality(str: String): Int {
-        return Regex("(\\d{3,4})[pP]").find(str)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Qualities.Unknown.value
-    }
+    private fun getIndexQuality(str: String): Int = Regex("(\\d{3,4})[pP]")
+        .find(str)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+        ?: Qualities.Unknown.value
 }

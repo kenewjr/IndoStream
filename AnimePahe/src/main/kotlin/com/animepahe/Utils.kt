@@ -20,7 +20,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 
-
 suspend fun loadCustomExtractor(
     name: String? = null,
     url: String,
@@ -29,10 +28,9 @@ suspend fun loadCustomExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null,
 ) {
-    // [FIXED]: stock loadExtractor sering tidak kenal kwik mirror variants
-    // atau pahe.win redirect chains; callback tidak dipanggil → "Link loading
-    // failed". Kalau zero hits → register raw URL supaya WebView player coba.
-    val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+    val resolvedCount =
+        java.util.concurrent.atomic
+            .AtomicInteger(0)
     try {
         loadExtractor(url, referer, subtitleCallback) { link ->
             resolvedCount.incrementAndGet()
@@ -43,23 +41,25 @@ suspend fun loadCustomExtractor(
                         name ?: link.name,
                         link.url,
                     ) {
-                        this.quality = when {
-                            else -> quality ?: link.quality
-                        }
+                        this.quality =
+                            when {
+                                else -> quality ?: link.quality
+                            }
                         this.type = link.type
                         this.referer = link.referer
                         this.headers = link.headers
                         this.extractorData = link.extractorData
-                    }
+                    },
                 )
             }
         }
     } catch (_: Exception) {
-        // Extractor crashed — fall through to fallback below.
     }
     if (resolvedCount.get() == 0) {
-        val host = runCatching { java.net.URI(url).host }.getOrNull()
-            ?.removePrefix("www.") ?: name ?: "Embed"
+        val host =
+            runCatching { java.net.URI(url).host }
+                .getOrNull()
+                ?.removePrefix("www.") ?: name ?: "Embed"
         callback.invoke(
             newExtractorLink(
                 name ?: host,
@@ -68,38 +68,42 @@ suspend fun loadCustomExtractor(
             ) {
                 this.referer = referer ?: ""
                 this.quality = quality ?: com.lagradost.cloudstream3.utils.Qualities.Unknown.value
-            }
+            },
         )
     }
 }
 
 class Kwik : ExtractorApi() {
-    override val name            = "Kwik"
-    override val mainUrl         = "https://kwik.cx"
+    override val name = "Kwik"
+    override val mainUrl = "https://kwik.cx"
     override val requiresReferer = true
 
-    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val res = app.get(url,referer=url)
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val res = app.get(url, referer = url)
         val script =
             res.document.selectFirst("script:containsData(function(p,a,c,k,e,d))")?.data()
         val unpacked = getAndUnpack(script ?: return)
-        val m3u8 =Regex("source=\\s*'(.*?m3u8.*?)'").find(unpacked)?.groupValues?.getOrNull(1) ?:""
+        val m3u8 = Regex("source=\\s*'(.*?m3u8.*?)'").find(unpacked)?.groupValues?.getOrNull(1) ?: ""
         callback.invoke(
             newExtractorLink(
                 name,
                 name,
                 url = m3u8,
-                INFER_TYPE
+                INFER_TYPE,
             ) {
                 this.referer = mainUrl
                 this.quality = getQualityFromName("")
-                this.headers= mapOf("origin" to mainUrl)
-            }
+                this.headers = mapOf("origin" to mainUrl)
+            },
         )
     }
 }
 
-//Credit Thanks to https://github.com/SaurabhKaperwan/CSX/blob/7256fe183966412b2323beb15d03331009bfb80f/CineStream/src/main/kotlin/com/megix/Extractors.kt#L108
 class Pahe : ExtractorApi() {
     override val name = "Pahe"
     override val mainUrl = "https://pahe.win"
@@ -109,7 +113,12 @@ class Pahe : ExtractorApi() {
     private val kwikDToken = Regex("value=\"([^\"]+)\"")
     private val client = OkHttpClient()
 
-    private fun decrypt(fullString: String, key: String, v1: Int, v2: Int): String {
+    private fun decrypt(
+        fullString: String,
+        key: String,
+        v1: Int,
+        v2: Int,
+    ): String {
         val keyIndexMap = key.withIndex().associate { it.value to it.index }
         val sb = StringBuilder()
         var i = 0
@@ -117,11 +126,12 @@ class Pahe : ExtractorApi() {
 
         while (i < fullString.length) {
             val nextIndex = fullString.indexOf(toFind, i)
-            val decodedCharStr = buildString {
-                for (j in i until nextIndex) {
-                    append(keyIndexMap[fullString[j]] ?: -1)
+            val decodedCharStr =
+                buildString {
+                    for (j in i until nextIndex) {
+                        append(keyIndexMap[fullString[j]] ?: -1)
+                    }
                 }
-            }
 
             i = nextIndex + 1
 
@@ -132,25 +142,41 @@ class Pahe : ExtractorApi() {
         return sb.toString()
     }
 
-    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val noRedirects = OkHttpClient.Builder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .build()
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val noRedirects =
+            OkHttpClient
+                .Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
 
-        val initialRequest = Request.Builder()
-            .url("$url/i")
-            .get()
-            .build()
+        val initialRequest =
+            Request
+                .Builder()
+                .url("$url/i")
+                .get()
+                .build()
 
-        val kwikUrl = "https://" + noRedirects.newCall(initialRequest).execute()
-            .header("location")!!.substringAfterLast("https://")
+        val kwikUrl =
+            "https://" +
+                noRedirects
+                    .newCall(initialRequest)
+                    .execute()
+                    .header("location")!!
+                    .substringAfterLast("https://")
 
-        val fContentRequest = Request.Builder()
-            .url(kwikUrl)
-            .header("referer", "https://kwik.cx/")
-            .get()
-            .build()
+        val fContentRequest =
+            Request
+                .Builder()
+                .url(kwikUrl)
+                .header("referer", "https://kwik.cx/")
+                .get()
+                .build()
 
         val fContent = client.newCall(fContentRequest).execute()
         val fContentString = fContent.body.toString()
@@ -161,28 +187,36 @@ class Pahe : ExtractorApi() {
         val uri = kwikDUrl.find(decrypted)!!.destructured.component1()
         val tok = kwikDToken.find(decrypted)!!.destructured.component1()
 
-        val noRedirectClient = OkHttpClient().newBuilder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .cookieJar(client.cookieJar)
-            .build()
+        val noRedirectClient =
+            OkHttpClient()
+                .newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .cookieJar(client.cookieJar)
+                .build()
 
         var code = 419
         var tries = 0
         var content: Response? = null
 
         while (code != 302 && tries < 20) {
-            val formBody = FormBody.Builder()
-                .add("_token", tok)
-                .build()
+            val formBody =
+                FormBody
+                    .Builder()
+                    .add("_token", tok)
+                    .build()
 
-            val postRequest = Request.Builder()
-                .url(uri)
-                .header("user-agent", " Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-                .header("referer", fContent.request.url.toString())
-                .header("cookie",  fContent.headers("set-cookie").firstOrNull().toString())
-                .post(formBody)
-                .build()
+            val postRequest =
+                Request
+                    .Builder()
+                    .url(uri)
+                    .header(
+                        "user-agent",
+                        " Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    ).header("referer", fContent.request.url.toString())
+                    .header("cookie", fContent.headers("set-cookie").firstOrNull().toString())
+                    .post(formBody)
+                    .build()
 
             content = noRedirectClient.newCall(postRequest).execute()
             code = content.code
@@ -197,11 +231,11 @@ class Pahe : ExtractorApi() {
                 name,
                 name,
                 url = location,
-                INFER_TYPE
+                INFER_TYPE,
             ) {
                 this.referer = "https://kwik.cx/"
                 this.quality = getQualityFromName("")
-            }
+            },
         )
     }
 }
@@ -209,19 +243,19 @@ class Pahe : ExtractorApi() {
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class MetaImage(
     @param:JsonProperty("coverType") val coverType: String?,
-    @param:JsonProperty("url") val url: String?
+    @param:JsonProperty("url") val url: String?,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class MetaEpisode(
     @param:JsonProperty("episode") val episode: String?,
-    @param:JsonProperty("airDateUtc") val airDateUtc: String?,  // Keeping only one field
-    @param:JsonProperty("runtime") val runtime: Int?,     // Keeping only one field
+    @param:JsonProperty("airDateUtc") val airDateUtc: String?,
+    @param:JsonProperty("runtime") val runtime: Int?,
     @param:JsonProperty("image") val image: String?,
     @param:JsonProperty("title") val title: Map<String, String>?,
     @param:JsonProperty("overview") val overview: String?,
     @param:JsonProperty("rating") val rating: String?,
-    @param:JsonProperty("finaleType") val finaleType: String?
+    @param:JsonProperty("finaleType") val finaleType: String?,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -229,9 +263,8 @@ data class MetaAnimeData(
     @param:JsonProperty("titles") val titles: Map<String, String>?,
     @param:JsonProperty("images") val images: List<MetaImage>?,
     @param:JsonProperty("episodes") val episodes: Map<String, MetaEpisode>?,
-    @param:JsonProperty("mappings") val mappings: MetaMappings? = null
+    @param:JsonProperty("mappings") val mappings: MetaMappings? = null,
 )
-
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class MetaMappings(
@@ -243,11 +276,9 @@ data class MetaMappings(
     @param:JsonProperty("kitsu_id") val kitsuid: String? = null,
 )
 
-fun parseAnimeData(jsonString: String): MetaAnimeData? {
-    return try {
-        val objectMapper = ObjectMapper()
-        objectMapper.readValue(jsonString, MetaAnimeData::class.java)
-    } catch (_: Exception) {
-        null // Return null for invalid JSON instead of crashing
-    }
+fun parseAnimeData(jsonString: String): MetaAnimeData? = try {
+    val objectMapper = ObjectMapper()
+    objectMapper.readValue(jsonString, MetaAnimeData::class.java)
+} catch (_: Exception) {
+    null
 }

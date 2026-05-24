@@ -4,15 +4,10 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.Filesim
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
-
 
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
@@ -26,30 +21,35 @@ open class Hownetwork : ExtractorApi() {
     override val requiresReferer = true
 
     override suspend fun getUrl(
-            url: String,
-            referer: String?,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
     ) {
         val id = url.substringAfter("id=")
-        val response = app.post(
-                "$mainUrl/api.php?id=$id",
-                data = mapOf(
+        val response =
+            app
+                .post(
+                    "$mainUrl/api.php?id=$id",
+                    data =
+                    mapOf(
                         "r" to "",
                         "d" to mainUrl,
-                ),
-                referer = url,
-                headers = mapOf(
-                        "X-Requested-With" to "XMLHttpRequest"
-                )
-        ).text
+                    ),
+                    referer = url,
+                    headers =
+                    mapOf(
+                        "X-Requested-With" to "XMLHttpRequest",
+                    ),
+                ).text
         val json = JSONObject(response)
         val file = json.optString("file")
         Log.d("Phisher", file)
-            M3u8Helper.generateM3u8(
+        M3u8Helper
+            .generateM3u8(
                 this.name,
                 file,
-                file
+                file,
             ).forEach(callback)
     }
 }

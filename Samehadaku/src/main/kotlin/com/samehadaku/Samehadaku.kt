@@ -3,8 +3,8 @@ package com.samehadaku
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
@@ -21,56 +21,53 @@ class Samehadaku : MainAPI() {
     override var lang = "id"
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
+
     companion object {
-        fun getType(t: String): TvType {
-            return if (t.contains("OVA", true) || t.contains("Special", true)) TvType.OVA
-            else if (t.contains("Movie", true)) TvType.AnimeMovie else TvType.Anime
+        fun getType(t: String): TvType = if (t.contains("OVA", true) || t.contains("Special", true)) {
+            TvType.OVA
+        } else if (t.contains("Movie", true)) {
+            TvType.AnimeMovie
+        } else {
+            TvType.Anime
         }
 
-        fun getStatus(t: String): ShowStatus {
-            return when (t) {
-                "Completed" -> ShowStatus.Completed
-                "Ongoing" -> ShowStatus.Ongoing
-                else -> ShowStatus.Completed
-            }
+        fun getStatus(t: String): ShowStatus = when (t) {
+            "Completed" -> ShowStatus.Completed
+            "Ongoing" -> ShowStatus.Ongoing
+            else -> ShowStatus.Completed
         }
     }
 
-    // [ENHANCED]: tambah kategori filter agar user bisa browse berdasarkan
-    // genre, status (ongoing/completed), tahun, dan jenis konten.
-    // Plus tambah halaman "Jadwal Rilis" dan "Movie".
     override val mainPage =
-            mainPageOf(
-                    "$mainUrl/page/" to "Episode Terbaru",
-                    "$mainUrl/" to "HomePage",
-                    "$mainUrl/daftar-anime-2/page/" to "Daftar Anime",
-                    // Status filter
-                    "$mainUrl/anime-status/ongoing/page/" to "Ongoing",
-                    "$mainUrl/anime-status/completed/page/" to "Completed",
-                    // Type filter
-                    "$mainUrl/anime-type/tv/page/" to "TV",
-                    "$mainUrl/anime-type/movie/page/" to "Movie",
-                    "$mainUrl/anime-type/ova/page/" to "OVA",
-                    // Schedule
-                    "$mainUrl/jadwal-rilis/page/" to "Jadwal Rilis",
-                    // Popular genres
-                    "$mainUrl/genre/action/page/" to "Genre: Action",
-                    "$mainUrl/genre/adventure/page/" to "Genre: Adventure",
-                    "$mainUrl/genre/comedy/page/" to "Genre: Comedy",
-                    "$mainUrl/genre/drama/page/" to "Genre: Drama",
-                    "$mainUrl/genre/fantasy/page/" to "Genre: Fantasy",
-                    "$mainUrl/genre/isekai/page/" to "Genre: Isekai",
-                    "$mainUrl/genre/romance/page/" to "Genre: Romance",
-                    "$mainUrl/genre/school/page/" to "Genre: School",
-                    "$mainUrl/genre/shounen/page/" to "Genre: Shounen",
-                    "$mainUrl/genre/supernatural/page/" to "Genre: Supernatural",
-                    // Recent years
-                    "$mainUrl/anime-year/2026/page/" to "Tahun 2026",
-                    "$mainUrl/anime-year/2025/page/" to "Tahun 2025",
-                    "$mainUrl/anime-year/2024/page/" to "Tahun 2024",
-            )
+        mainPageOf(
+            "$mainUrl/page/" to "Episode Terbaru",
+            "$mainUrl/" to "HomePage",
+            "$mainUrl/daftar-anime-2/page/" to "Daftar Anime",
+            "$mainUrl/anime-status/ongoing/page/" to "Ongoing",
+            "$mainUrl/anime-status/completed/page/" to "Completed",
+            "$mainUrl/anime-type/tv/page/" to "TV",
+            "$mainUrl/anime-type/movie/page/" to "Movie",
+            "$mainUrl/anime-type/ova/page/" to "OVA",
+            "$mainUrl/jadwal-rilis/page/" to "Jadwal Rilis",
+            "$mainUrl/genre/action/page/" to "Genre: Action",
+            "$mainUrl/genre/adventure/page/" to "Genre: Adventure",
+            "$mainUrl/genre/comedy/page/" to "Genre: Comedy",
+            "$mainUrl/genre/drama/page/" to "Genre: Drama",
+            "$mainUrl/genre/fantasy/page/" to "Genre: Fantasy",
+            "$mainUrl/genre/isekai/page/" to "Genre: Isekai",
+            "$mainUrl/genre/romance/page/" to "Genre: Romance",
+            "$mainUrl/genre/school/page/" to "Genre: School",
+            "$mainUrl/genre/shounen/page/" to "Genre: Shounen",
+            "$mainUrl/genre/supernatural/page/" to "Genre: Supernatural",
+            "$mainUrl/anime-year/2026/page/" to "Tahun 2026",
+            "$mainUrl/anime-year/2025/page/" to "Tahun 2025",
+            "$mainUrl/anime-year/2024/page/" to "Tahun 2024",
+        )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest,
+    ): HomePageResponse {
         val items = mutableListOf<HomePageList>()
 
         if (request.name != "Episode Terbaru" && page <= 1) {
@@ -84,12 +81,13 @@ class Samehadaku : MainAPI() {
 
         if (request.name == "Episode Terbaru") {
             val home =
-                    app.get(request.data + page)
-                            .document
-                            .selectFirst("div.post-show")
-                            ?.select("ul li")
-                            ?.mapNotNull { it.toSearchResult() }
-                            ?: throw ErrorLoadingException("No Media Found")
+                app
+                    .get(request.data + page)
+                    .document
+                    .selectFirst("div.post-show")
+                    ?.select("ul li")
+                    ?.mapNotNull { it.toSearchResult() }
+                    ?: throw ErrorLoadingException("No Media Found")
             items.add(HomePageList(request.name, home, true))
         }
 
@@ -98,8 +96,8 @@ class Samehadaku : MainAPI() {
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
         val title =
-                this.selectFirst("div.title, h2.entry-title a, div.lftinfo h2")?.text()?.trim()
-                        ?: return null
+            this.selectFirst("div.title, h2.entry-title a, div.lftinfo h2")?.text()?.trim()
+                ?: return null
         val href = fixUrlNull(this.selectFirst("a")?.attr("href") ?: return null)
         val posterUrl = fixUrlNull(this.select("img").attr("src"))
         val epNum = this.selectFirst("div.dtla author")?.text()?.toIntOrNull()
@@ -110,18 +108,21 @@ class Samehadaku : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // [ENHANCED]: pagination — sebelumnya cuma halaman 1 yang ditampilkan,
-        // hasilnya pencarian dengan banyak match jadi terpotong. Kita iterasi
-        // sampai 5 halaman atau sampai halaman tidak menambahkan hasil baru.
         val results = mutableListOf<SearchResponse>()
         val seenHrefs = mutableSetOf<String>()
         for (page in 1..5) {
-            val url = if (page == 1) "$mainUrl/?s=$query"
-                else "$mainUrl/page/$page/?s=$query"
-            val pageResults = runCatching { app.get(url).document }.getOrNull()
-                ?.select("main#main div.animepost")
-                ?.mapNotNull { it.toSearchResult() }
-                ?: emptyList()
+            val url =
+                if (page == 1) {
+                    "$mainUrl/?s=$query"
+                } else {
+                    "$mainUrl/page/$page/?s=$query"
+                }
+            val pageResults =
+                runCatching { app.get(url).document }
+                    .getOrNull()
+                    ?.select("main#main div.animepost")
+                    ?.mapNotNull { it.toSearchResult() }
+                    ?: emptyList()
             val newResults = pageResults.filter { seenHrefs.add(it.url) }
             if (newResults.isEmpty()) break
             results.addAll(newResults)
@@ -131,54 +132,63 @@ class Samehadaku : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val fixUrl =
-                if (url.contains("/anime/")) {
-                    url
-                } else {
-                    app.get(url).document.selectFirst("div.nvs.nvsc a")?.attr("href")
-                }
+            if (url.contains("/anime/")) {
+                url
+            } else {
+                app
+                    .get(url)
+                    .document
+                    .selectFirst("div.nvs.nvsc a")
+                    ?.attr("href")
+            }
 
         val document = app.get(fixUrl ?: return null).document
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = document.selectFirst("div.thumb > img")?.attr("src")
         val tags = document.select("div.genre-info > a").map { it.text() }
         val year =
-                document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
-                    Regex("\\d,\\s(\\d*)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                }
+            document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
+                Regex("\\d,\\s(\\d*)")
+                    .find(it)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.toIntOrNull()
+            }
         val status =
-                getStatus(
-                        document.selectFirst("div.spe > span:contains(Status)")?.ownText()
-                                ?: return null
-                )
+            getStatus(
+                document.selectFirst("div.spe > span:contains(Status)")?.ownText()
+                    ?: return null,
+            )
         val type =
-                getType(
-                        document.selectFirst("div.spe > span:contains(Type)")
-                                ?.ownText()
-                                ?.trim()
-                                ?.lowercase()
-                                ?: "tv"
-                )
+            getType(
+                document
+                    .selectFirst("div.spe > span:contains(Type)")
+                    ?.ownText()
+                    ?.trim()
+                    ?.lowercase()
+                    ?: "tv",
+            )
         val rating = document.selectFirst("span.ratingValue")?.text()?.trim()
         val description = document.select("div.desc p").text().trim()
         val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")
 
         val episodes =
-                document.select("div.lstepsiode.listeps ul li")
-                        .mapNotNull {
-                            val header = it.selectFirst("span.lchx > a") ?: return@mapNotNull null
-                            val episode =
-                                    Regex("Episode\\s?(\\d+)")
-                                            .find(header.text())
-                                            ?.groupValues
-                                            ?.getOrNull(1)
-                                            ?.toIntOrNull()
-                            val link = fixUrl(header.attr("href"))
-                            newEpisode(link){this.episode = episode}
-                        }
-                        .reversed()
+            document
+                .select("div.lstepsiode.listeps ul li")
+                .mapNotNull {
+                    val header = it.selectFirst("span.lchx > a") ?: return@mapNotNull null
+                    val episode =
+                        Regex("Episode\\s?(\\d+)")
+                            .find(header.text())
+                            ?.groupValues
+                            ?.getOrNull(1)
+                            ?.toIntOrNull()
+                    val link = fixUrl(header.attr("href"))
+                    newEpisode(link) { this.episode = episode }
+                }.reversed()
 
         val recommendations =
-                document.select("aside#sidebar ul li").mapNotNull { it.toSearchResult() }
+            document.select("aside#sidebar ul li").mapNotNull { it.toSearchResult() }
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
@@ -200,41 +210,39 @@ class Samehadaku : MainAPI() {
     }
 
     override suspend fun loadLinks(
-            data: String,
-            isCasting: Boolean,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
     ): Boolean {
-
         val document = app.get(data).document
 
-        // [ENHANCED]: dua jalur paralel — streaming server (iframe embed) DAN
-        // download mirrors. Sebelumnya hanya download yang di-extract, jadi
-        // user mesti buka mirror eksternal untuk play. Sekarang iframe server
-        // yang sudah ter-render di halaman juga ikut dipetakan.
         runAllAsync(
             {
-                // Streaming iframes — selector kandidat yang sering dipakai oleh
-                // template Samehadaku (varies per skin). Kita coba semua.
-                val iframeSrcs = document.select(
-                    "div.player-embed iframe, " +
-                    "div#pembed iframe, " +
-                    "div.iframe-server iframe, " +
-                    "div.responsive-embed-container iframe, " +
-                    "main iframe[src]"
-                ).mapNotNull {
-                    (it.attr("src").takeIf { s -> s.isNotBlank() }
-                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
-                        ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() })
-                }.distinct()
+                val iframeSrcs =
+                    document
+                        .select(
+                            "div.player-embed iframe, " +
+                                "div#pembed iframe, " +
+                                "div.iframe-server iframe, " +
+                                "div.responsive-embed-container iframe, " +
+                                "main iframe[src]",
+                        ).mapNotNull {
+                            (
+                                it.attr("src").takeIf { s -> s.isNotBlank() }
+                                    ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
+                                    ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() }
+                                )
+                        }.distinct()
 
                 iframeSrcs.amap { src ->
                     runCatching {
-                        val resolved = when {
-                            src.startsWith("http") -> src
-                            src.startsWith("//") -> "https:$src"
-                            else -> "$mainUrl$src"
-                        }
+                        val resolved =
+                            when {
+                                src.startsWith("http") -> src
+                                src.startsWith("//") -> "https:$src"
+                                else -> "$mainUrl$src"
+                            }
                         loadExtractor(resolved, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
@@ -243,56 +251,52 @@ class Samehadaku : MainAPI() {
                 document.select("div#downloadb li").map { el ->
                     el.select("a").amap {
                         loadFixedExtractor(
-                                fixUrl(it.attr("href")),
-                                el.select("strong").text(),
-                                "$mainUrl/",
-                                subtitleCallback,
-                                callback
+                            fixUrl(it.attr("href")),
+                            el.select("strong").text(),
+                            "$mainUrl/",
+                            subtitleCallback,
+                            callback,
                         )
                     }
                 }
-            }
+            },
         )
 
         return true
     }
 
     private suspend fun loadFixedExtractor(
-            url: String,
-            name: String,
-            referer: String? = null,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
+        url: String,
+        name: String,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
     ) = coroutineScope {
         loadExtractor(url, referer, subtitleCallback) { link ->
-			launch(Dispatchers.IO) {
-				callback.invoke(
-					newExtractorLink(
-						link.name,
-						link.name,
-						link.url,						
-						link.type
-					){
-						this.referer = link.referer
-						this.quality = name.fixQuality()
-						this.headers = link.headers
-						this.extractorData = link.extractorData
-					}
-				)
-			}
-		}
-    }      
-
-    private fun String.fixQuality(): Int {
-        return when (this.uppercase()) {
-            "4K" -> Qualities.P2160.value
-            "FULLHD" -> Qualities.P1080.value
-            "MP4HD" -> Qualities.P720.value
-            else -> this.filter { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
+            launch(Dispatchers.IO) {
+                callback.invoke(
+                    newExtractorLink(
+                        link.name,
+                        link.name,
+                        link.url,
+                        link.type,
+                    ) {
+                        this.referer = link.referer
+                        this.quality = name.fixQuality()
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
+                    },
+                )
+            }
         }
     }
 
-    private fun String.removeBloat(): String {
-        return this.replace(Regex("(Nonton)|(Anime)|(Subtitle\\sIndonesia)"), "").trim()
+    private fun String.fixQuality(): Int = when (this.uppercase()) {
+        "4K" -> Qualities.P2160.value
+        "FULLHD" -> Qualities.P1080.value
+        "MP4HD" -> Qualities.P720.value
+        else -> this.filter { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
     }
+
+    private fun String.removeBloat(): String = this.replace(Regex("(Nonton)|(Anime)|(Subtitle\\sIndonesia)"), "").trim()
 }
