@@ -1,4 +1,4 @@
-package com.layarKacaProvider
+package com.layarkacaprovider
 
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6

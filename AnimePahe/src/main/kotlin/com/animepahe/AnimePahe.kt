@@ -1,4 +1,4 @@
-package com.phisher98
+package com.animepahe
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log

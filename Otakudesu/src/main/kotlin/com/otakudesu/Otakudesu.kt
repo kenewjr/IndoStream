@@ -357,22 +357,42 @@ class Otakudesu : MainAPI() {
             callback: (ExtractorLink) -> Unit,
             quality: Int = Qualities.Unknown.value,
     ) = coroutineScope {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            launch(Dispatchers.IO) {
-                callback.invoke(
-                    newExtractorLink(
-                        link.name,
-                        link.name,
-                        link.url,
-                        link.type
-                    ) {
-                        this.referer = link.referer
-                        this.quality = quality
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    }
-                )
+        // [FIXED]: kalau stock loadExtractor tidak kenal embed host (desustream
+        // variants, blogger video.g, custom mirrors), callback tidak dipanggil
+        // → user lihat "Link loading failed". Pakai counter, kalau zero hits
+        // → register iframe URL itu sendiri supaya WebView player bisa coba.
+        val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+        try {
+            loadExtractor(url, referer, subtitleCallback) { link ->
+                resolvedCount.incrementAndGet()
+                launch(Dispatchers.IO) {
+                    callback.invoke(
+                        newExtractorLink(
+                            link.name,
+                            link.name,
+                            link.url,
+                            link.type
+                        ) {
+                            this.referer = link.referer
+                            this.quality = quality
+                            this.headers = link.headers
+                            this.extractorData = link.extractorData
+                        }
+                    )
+                }
             }
+        } catch (_: Exception) {
+            // Extractor crashed — fall through to fallback below.
+        }
+        if (resolvedCount.get() == 0) {
+            val host = runCatching { java.net.URI(url).host }.getOrNull()
+                ?.removePrefix("www.") ?: "Embed"
+            callback.invoke(
+                newExtractorLink(host, host, url) {
+                    this.referer = referer ?: "$mainUrl/"
+                    this.quality = quality
+                }
+            )
         }
     }
 

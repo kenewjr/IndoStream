@@ -7,7 +7,7 @@ cloudstream {
 
     description = "Pencurimovie "
     language    = "id"
-    authors = listOf("Phisher98")
+    authors = listOf("kenewjr")
 
     /**
     * Status int as the following:

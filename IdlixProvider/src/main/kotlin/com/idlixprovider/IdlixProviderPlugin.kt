@@ -1,4 +1,4 @@
-package com.idlix
+package com.idlixprovider
 
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

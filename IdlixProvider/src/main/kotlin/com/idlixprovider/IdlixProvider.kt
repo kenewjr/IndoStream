@@ -1,4 +1,4 @@
-package com.idlix
+package com.idlixprovider
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.Actor

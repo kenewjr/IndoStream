@@ -1,4 +1,4 @@
-package com.phisher98
+package com.animepahe
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -29,24 +29,47 @@ suspend fun loadCustomExtractor(
     callback: (ExtractorLink) -> Unit,
     quality: Int? = null,
 ) {
-    loadExtractor(url, referer, subtitleCallback) { link ->
-        CoroutineScope(Dispatchers.IO).launch {
-            callback.invoke(
-                newExtractorLink(
-                    name ?: link.source,
-                    name ?: link.name,
-                    link.url,
-                ) {
-                    this.quality = when {
-                        else -> quality ?: link.quality
+    // [FIXED]: stock loadExtractor sering tidak kenal kwik mirror variants
+    // atau pahe.win redirect chains; callback tidak dipanggil → "Link loading
+    // failed". Kalau zero hits → register raw URL supaya WebView player coba.
+    val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+    try {
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            resolvedCount.incrementAndGet()
+            CoroutineScope(Dispatchers.IO).launch {
+                callback.invoke(
+                    newExtractorLink(
+                        name ?: link.source,
+                        name ?: link.name,
+                        link.url,
+                    ) {
+                        this.quality = when {
+                            else -> quality ?: link.quality
+                        }
+                        this.type = link.type
+                        this.referer = link.referer
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
                     }
-                    this.type = link.type
-                    this.referer = link.referer
-                    this.headers = link.headers
-                    this.extractorData = link.extractorData
-                }
-            )
+                )
+            }
         }
+    } catch (_: Exception) {
+        // Extractor crashed — fall through to fallback below.
+    }
+    if (resolvedCount.get() == 0) {
+        val host = runCatching { java.net.URI(url).host }.getOrNull()
+            ?.removePrefix("www.") ?: name ?: "Embed"
+        callback.invoke(
+            newExtractorLink(
+                name ?: host,
+                name ?: host,
+                url,
+            ) {
+                this.referer = referer ?: ""
+                this.quality = quality ?: com.lagradost.cloudstream3.utils.Qualities.Unknown.value
+            }
+        )
     }
 }
 

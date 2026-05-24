@@ -208,24 +208,44 @@ class Oploverz : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) = coroutineScope {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-			launch(Dispatchers.IO) {
-				callback.invoke(
-					newExtractorLink(
-						link.name,
-						link.name,
-						link.url,						
-						link.type
-					){
-						this.referer = link.referer
-						this.quality = name.fixQuality()
-						this.headers = link.headers
-						this.extractorData = link.extractorData
-					}
-				)
-			}
-		}
-    }        
+        // [FIXED]: Oploverz mirrors (acefile, akirabox, filedon, fileq, blogger
+        // video.g, custom 4me players) tidak semuanya kenal di stock extractor
+        // CloudStream. Kalau loadExtractor return 0 sources → silent drop →
+        // user lihat "0 links loaded". Pakai counter, fallback ke raw URL.
+        val resolvedCount = AtomicInteger(0)
+        try {
+            loadExtractor(url, referer, subtitleCallback) { link ->
+                resolvedCount.incrementAndGet()
+                launch(Dispatchers.IO) {
+                    callback.invoke(
+                        newExtractorLink(
+                            link.name,
+                            link.name,
+                            link.url,
+                            link.type
+                        ) {
+                            this.referer = link.referer
+                            this.quality = name.fixQuality()
+                            this.headers = link.headers
+                            this.extractorData = link.extractorData
+                        }
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            // Extractor crashed — fall through to fallback below.
+        }
+        if (resolvedCount.get() == 0) {
+            val host = runCatching { java.net.URI(url).host }.getOrNull()
+                ?.removePrefix("www.") ?: name.ifBlank { "Embed" }
+            callback.invoke(
+                newExtractorLink("$host ($name)", host, url) {
+                    this.referer = referer ?: "$mainUrl/"
+                    this.quality = name.fixQuality()
+                }
+            )
+        }
+    }
 
     private fun String.fixQuality(): Int {
         return when (this) {

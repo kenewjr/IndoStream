@@ -1,12 +1,12 @@
 // use an integer for version numbers
-version = 21
+version = 22
 
 android {
     // Override root namespace ("com.tekuma25") so AGP generates BuildConfig
-    // in com.phisher98, matching the package declared in BottomSheet.kt and
-    // sibling Phisher98 sources. Without this, references like
-    // BuildConfig.LIBRARY_PACKAGE_NAME fail with "Unresolved reference".
-    namespace = "com.phisher98"
+    // in com.animepahe, matching the package declared in source files.
+    // Without this, references like BuildConfig.LIBRARY_PACKAGE_NAME fail
+    // with "Unresolved reference".
+    namespace = "com.animepahe"
     buildFeatures {
         buildConfig = true
         viewBinding = true
@@ -22,7 +22,7 @@ cloudstream {
     // All of these properties are optional, you can safely remove them
 
     description = "Animes (SUB/DUB)"
-    authors = listOf("Cloudburst,Lorem Ipsum,Phisher98")
+    authors = listOf("kenewjr")
 
     /**
      * Status int as the following:

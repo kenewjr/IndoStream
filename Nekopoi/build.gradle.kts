@@ -8,7 +8,7 @@ cloudstream {
         "Dukungan smart-search dengan prefix (tag:, jav:, hentai:, uncensored:, dst.), " +
         "rekomendasi otomatis, thumbnail per-episode."
 
-    authors = listOf("Sora", "TeKuma25")
+    authors = listOf("kenewjr")
 
     /**
      * Status int as the following:

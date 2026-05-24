@@ -1,4 +1,4 @@
-package com.idlix
+package com.idlixprovider
 
 data class ApiResponse(
     val data: List<ApiItem> = emptyList(),
