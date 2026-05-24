@@ -7,11 +7,12 @@ import com.lagradost.cloudstream3.utils.*
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 import java.net.URI
+import java.util.concurrent.atomic.AtomicInteger
 
 class LayarKacaProvider : MainAPI() {
 
-    override var mainUrl = "https://lk21.de"
-    private var seriesUrl = "https://series.lk21.de"
+    override var mainUrl = "https://tv10.lk21official.cc"
+    private var seriesUrl = "https://tv4.nontondrama.my"
     private var searchurl= "https://gudangvape.com"
 
     override var name = "LayarKaca"
@@ -191,14 +192,28 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
-        document.select("ul#player-list > li").map {
-                fixUrl(it.select("a").attr("href"))
-            }.amap {
-            val test=it.getIframe()
-            val referer=getBaseUrl(it)
-            Log.d("Phisher",test)
-            loadExtractor(it.getIframe(), referer, subtitleCallback, callback)
+        // [FIXED]: site sekarang pakai AES-encrypted data-url di player-list,
+        // decryption dilakukan oleh JS sisi-klien. Tanpa reverse-engineer cipher
+        // key, server-side scraping tidak bisa dapat iframe URL asli.
+        //
+        // Strategi: register URL halaman episode sendiri sebagai playable
+        // ExtractorLink → CloudStream WebView player akan load halaman
+        // dan biarkan JS yang handle decryption + iframe src injection.
+        // Tetap coba loadExtractor dulu jika ada handler bawaan.
+        val resolvedCount = AtomicInteger(0)
+        runCatching {
+            loadExtractor(data, "$mainUrl/", subtitleCallback) { link ->
+                resolvedCount.incrementAndGet()
+                callback.invoke(link)
+            }
+        }
+        if (resolvedCount.get() == 0) {
+            callback.invoke(
+                newExtractorLink(name, name, data) {
+                    this.referer = "$mainUrl/"
+                    this.quality = Qualities.Unknown.value
+                }
+            )
         }
         return true
     }

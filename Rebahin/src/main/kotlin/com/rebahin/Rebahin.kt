@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import java.net.URI
+import java.util.concurrent.atomic.AtomicInteger
 import org.jsoup.nodes.Element
 
 open class Rebahin : MainAPI() {
@@ -189,7 +190,27 @@ open class Rebahin : MainAPI() {
                     link.startsWith(mainServer) ->
                             invokeLokalSource(link, subtitleCallback, callback)
                     else -> {
-                        loadExtractor(link, "$directUrl/", subtitleCallback, callback)
+                        // [FIXED]: custom embed hosts (abyssplayer.com, raw-IP
+                        // /player/<id>) tidak punya extractor di CloudStream.
+                        // Stock loadExtractor() return 0 sources → user lihat
+                        // "Link loading failed". Register fallback iframe URL
+                        // langsung supaya WebView player bisa pakai.
+                        val resolvedCount = AtomicInteger(0)
+                        val ref = directUrl?.let { "$it/" } ?: "$mainServer/"
+                        loadExtractor(link, ref, subtitleCallback) { ext ->
+                            resolvedCount.incrementAndGet()
+                            callback.invoke(ext)
+                        }
+                        if (resolvedCount.get() == 0) {
+                            val host = runCatching { URI(link).host }.getOrNull()
+                                ?.removePrefix("www.") ?: "Embed"
+                            callback.invoke(
+                                newExtractorLink(host, host, link) {
+                                    this.referer = ref
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                        }
                     }
                 }
             }

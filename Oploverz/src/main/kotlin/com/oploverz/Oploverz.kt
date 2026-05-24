@@ -1,5 +1,6 @@
 package com.oploverz
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
@@ -7,7 +8,6 @@ import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import org.jsoup.nodes.Element
 
 class Oploverz : MainAPI() {
     override var mainUrl = "https://vip.oploverz.ltd"
@@ -35,131 +35,103 @@ class Oploverz : MainAPI() {
         }
     }
 
+    private val apiUrl = "https://backapi.oploverz.ac/api"
+
     override val mainPage =
             mainPageOf(
-                    "update" to "Latest Update",
-                    "latest" to "Latest Added",
-                    "popular" to "Popular Anime",
-                    "rating" to "Top Rated",
+                    "?orderBy=updated_at&direction=desc" to "Latest Update",
+                    "?orderBy=created_at&direction=desc" to "Latest Added",
+                    "?hot=true&orderBy=updated_at&direction=desc" to "Popular Anime",
+                    "?orderBy=score&direction=desc" to "Top Rated",
+                    "?status=Ongoing&orderBy=updated_at&direction=desc" to "Ongoing",
+                    "?status=Completed&orderBy=updated_at&direction=desc" to "Completed",
             )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document =
-                app.get("$mainUrl/anime-list/page/$page/?title&order=${request.data}&status&type")
-                        .document
-        val home = document.select("div.relat > article").mapNotNull { it.toSearchResult() }
+        // Site is a SvelteKit SPA; data is served from backapi.oploverz.ac/api.
+        val url = "$apiUrl/series${request.data}&page=$page&perPage=20"
+        val response = app.get(url).parsedSafe<ApiSeriesList>()
+            ?: throw ErrorLoadingException("Empty Oploverz API response")
+        val home = response.data.orEmpty().mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, home)
     }
 
-    private fun getProperAnimeLink(uri: String): String {
-        return if (uri.contains("/anime/")) {
-            uri
-        } else {
-            var title = uri.substringAfter("$mainUrl/")
-            title =
-                    when {
-                        (title.contains("-episode")) && !(title.contains("-movie")) ->
-                                Regex("(.+)-episode").find(title)?.groupValues?.get(1).toString()
-                        (title.contains("-movie")) ->
-                                Regex("(.+)-movie").find(title)?.groupValues?.get(1).toString()
-                        else -> title
-                    }
-            "$mainUrl/anime/$title"
-        }
-    }
-
-    private fun Element.toSearchResult(): AnimeSearchResponse? {
-        val title = this.selectFirst("div.title")?.text()?.trim() ?: return null
-        val href = getProperAnimeLink(this.selectFirst("a")!!.attr("href"))
-        val posterUrl = this.select("img[itemprop=image]").attr("src")
-        val type = getType(this.select("div.type").text().trim())
-        val epNum =
-                this.selectFirst("span.episode")
-                        ?.ownText()
-                        ?.replace(Regex("\\D"), "")
-                        ?.trim()
-                        ?.toIntOrNull()
-        return newAnimeSearchResponse(title, href, type) {
-            this.posterUrl = posterUrl
+    private fun ApiSeries.toSearchResult(): AnimeSearchResponse? {
+        val seriesSlug = slug ?: return null
+        val seriesTitle = title ?: return null
+        val href = "$mainUrl/series/$seriesSlug"
+        val seriesType = getType(releaseType ?: "")
+        val epNum = totalEpisodes
+        return newAnimeSearchResponse(seriesTitle, href, seriesType) {
+            this.posterUrl = poster
             addSub(epNum)
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val anime = mutableListOf<SearchResponse>()
-        (1..2).forEach { page ->
-            val link = "$mainUrl/page/$page/?s=$query"
-            val document = app.get(link).document
-            val media =
-                    document.select(".site-main.relat > article").mapNotNull {
-                        val title = it.selectFirst("div.title > h2")!!.ownText().trim()
-                        val href = it.selectFirst("a")!!.attr("href")
-                        val posterUrl = it.selectFirst("img")!!.attr("src")
-                        val type = getType(it.select("div.type").text().trim())
-                        newAnimeSearchResponse(title, href, type) { this.posterUrl = posterUrl }
-                    }
-            if (media.isNotEmpty()) anime.addAll(media)
+        val results = mutableListOf<AnimeSearchResponse>()
+        // Iterate up to 5 pages or until the API runs out of results.
+        for (page in 1..5) {
+            val url = "$apiUrl/series?title=$query&page=$page&perPage=20"
+            val response = app.get(url).parsedSafe<ApiSeriesList>() ?: break
+            val items = response.data.orEmpty().mapNotNull { it.toSearchResult() }
+            if (items.isEmpty()) break
+            results.addAll(items)
+            val meta = response.meta
+            if (meta != null && meta.currentPage != null && meta.lastPage != null
+                && meta.currentPage >= meta.lastPage) break
         }
-        return anime
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        // Slug is the last path segment of /series/<slug>.
+        val seriesSlug = url.substringAfterLast("/series/").substringBefore("/")
+            .ifBlank { throw ErrorLoadingException("Bad Oploverz URL: $url") }
 
-        val title =
-                document.selectFirst("h1.entry-title")
-                        ?.text()
-                        ?.replace("Subtitle Indonesia", "")
-                        ?.trim()
-                        ?: ""
-        val type = getType(document.selectFirst("div.alternati span.type")?.text() ?: "")
-        val year =
-                document.selectFirst("div.alternati a")
-                        ?.text()
-                        ?.filter { it.isDigit() }
-                        ?.toIntOrNull()
-        // [UPDATED SELECTOR]: relax dari `div.lstepsiode.listeps ul li`
-        // ke fallback chain yang menangani perubahan markup. Episode parsing
-        // sekarang juga lebih robust pakai regex Episode/Eps.
-        val episodes =
-                document.select(
-                    "div.lstepsiode.listeps ul li, " +
-                    "div.listeps ul li, " +
-                    "div.eplister ul li, " +
-                    "ul.lstepsiode li, " +
-                    "div.episodelist ul li"
-                )
-                        .mapNotNull {
-                            val header = it.selectFirst("a") ?: return@mapNotNull null
-                            val text = header.text().trim()
-                            val episode = Regex("Episode\\s*(\\d+)|Eps\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                                .find(text)
-                                ?.let { m -> m.groupValues.drop(1).firstOrNull { it.isNotBlank() } }
-                                ?.toIntOrNull()
-                                ?: text.toIntOrNull()
-                                ?: text.filter { c -> c.isDigit() }.toIntOrNull()
-                            val link = fixUrl(header.attr("href"))
-                            newEpisode(link){
-                                this.name = text
-                                this.episode = episode
-                            }
-                        }
-                        .distinctBy { it.data }
-                        .reversed()
+        val detail = app.get("$apiUrl/series/$seriesSlug").parsedSafe<ApiSeriesDetail>()
+            ?.data ?: throw ErrorLoadingException("Series not found: $seriesSlug")
 
-        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
+        val seriesTitle = detail.title ?: seriesSlug
+        val seriesType = getType(detail.releaseType ?: "")
+        val seriesYear = detail.releaseDate
+            ?.let { Regex("(\\d{4})").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
 
-        return newAnimeLoadResponse(title, url, type) {
-            posterUrl = tracker?.image ?: document.selectFirst("div.thumb > img")?.attr("src")
+        // Episode list is paginated. We grab perPage=100 and walk pages until done.
+        val episodeList = mutableListOf<ApiEpisode>()
+        for (page in 1..50) {
+            val ep = app.get("$apiUrl/series/$seriesSlug/episodes?page=$page&perPage=100")
+                .parsedSafe<ApiEpisodeList>() ?: break
+            val items = ep.data.orEmpty()
+            if (items.isEmpty()) break
+            episodeList.addAll(items)
+            val meta = ep.meta
+            if (meta?.currentPage != null && meta.lastPage != null
+                && meta.currentPage >= meta.lastPage) break
+        }
+        val episodes = episodeList
+            .mapNotNull { e ->
+                val epNum = e.episodeNumber?.toIntOrNull() ?: return@mapNotNull null
+                // Pass slug + episode number to loadLinks via the data field; loadLinks
+                // re-fetches the episode payload from the API so we don't have to
+                // serialise the whole download tree here.
+                newEpisode("$seriesSlug|$epNum") {
+                    this.name = e.title ?: "Episode $epNum"
+                    this.episode = epNum
+                }
+            }
+            .sortedBy { it.episode ?: 0 }
+
+        val tracker = APIHolder.getTracker(listOf(seriesTitle), TrackerType.getTypes(seriesType), seriesYear, true)
+
+        return newAnimeLoadResponse(seriesTitle, url, seriesType) {
+            posterUrl = tracker?.image ?: detail.poster
             backgroundPosterUrl = tracker?.cover
-            this.year = year
+            this.year = seriesYear
             addEpisodes(DubStatus.Subbed, episodes)
-            showStatus =
-                    getStatus(
-                            document.selectFirst("div.alternati span:nth-child(2)")?.text()?.trim()
-                    )
-            plot = document.selectFirst("div.entry-content > p")?.text()?.trim()
-            this.tags = document.select("div.genre-info a").map { it.text() }
+            showStatus = getStatus(detail.status)
+            plot = detail.description
+            this.tags = detail.genres.orEmpty().mapNotNull { it.name }
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
         }
@@ -171,73 +143,56 @@ class Oploverz : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Oploverz is a SvelteKit SPA. The episode page ships every episode's
-        // data as inline JS object literals (no <iframe>, no Dooplay AJAX).
-        // Pattern looks like:
-        //   episodes:[{id:..., episodeNumber:"6", downloadUrl:[...],
-        //     streamUrl:[{source:"Nonton Online 360p", url:"https://..."}],
-        //     content:null, ...}]
-        // We pluck the slice for the active episode and hand each URL to
-        // loadExtractor. Blogger video.g, acefile.co, akirabox, filedon, and
-        // 4meplayer embeds are all resolved by CloudStream's stock extractors.
-        val pageHtml = app.get(data, referer = "$mainUrl/").text
-        val epNum = Regex("""/episode/(\d+)""").find(data)?.groupValues?.getOrNull(1)
+        // load() encodes data as "<slug>|<epNum>" so we re-fetch the episode
+        // payload from the API. Episode payload includes streamUrl (player
+        // iframes) and downloadUrl (host mirrors per quality per format).
+        val parts = data.split("|", limit = 2)
+        if (parts.size != 2) return false
+        val (seriesSlug, epNumStr) = parts
+        val epNum = epNumStr.toIntOrNull() ?: return false
 
-        // Locate the episode object's bounds. We anchor on episodeNumber:"<n>"
-        // (with non-greedy lookups around it) so we don't accidentally pull
-        // sources from a neighbouring episode's record.
-        val epBlock: String = if (epNum != null) {
-            val anchor = Regex("""episodeNumber:"$epNum"""").find(pageHtml)
-            if (anchor != null) {
-                val start = anchor.range.first
-                // Stop at the next episodeNumber:"..." OR end of episodes:[ array.
-                val tail = pageHtml.substring(start)
-                val nextAnchor = Regex("""episodeNumber:"(?!$epNum")""").find(tail, 1)
-                tail.substring(0, nextAnchor?.range?.first ?: tail.length.coerceAtMost(60_000))
-            } else pageHtml
-        } else pageHtml
+        // Walk pages to locate the episode (cheaper than fetching all and filtering).
+        var match: ApiEpisode? = null
+        for (page in 1..50) {
+            val resp = app.get("$apiUrl/series/$seriesSlug/episodes?page=$page&perPage=100")
+                .parsedSafe<ApiEpisodeList>() ?: break
+            val items = resp.data.orEmpty()
+            if (items.isEmpty()) break
+            match = items.firstOrNull { it.episodeNumber?.toIntOrNull() == epNum }
+            if (match != null) break
+            val meta = resp.meta
+            if (meta?.currentPage != null && meta.lastPage != null
+                && meta.currentPage >= meta.lastPage) break
+        }
+        val episode = match ?: return false
 
-        // Stream URLs (player embeds).
-        val streamArrayRegex = Regex(
-            """streamUrl:\[(.*?)](?=,content)""",
-            RegexOption.DOT_MATCHES_ALL
-        )
-        val streamArray = streamArrayRegex.find(epBlock)?.groupValues?.getOrNull(1).orEmpty()
-        val streamObjRegex = Regex("""\{source:"([^"]+)",url:"([^"]+)"}""")
-        val streamSources = streamObjRegex.findAll(streamArray).map {
-            it.groupValues[1] to it.groupValues[2].replace("\\u0026", "&").replace("\\/", "/")
-        }.toList()
-
-        // Download URLs (host-by-host, per quality, per format).
-        val downloadHostRegex = Regex("""\{host:"([^"]+)",url:"([^"]+)"}""")
-        val downloadSources = downloadHostRegex.findAll(epBlock).map {
-            it.groupValues[1] to it.groupValues[2].replace("\\u0026", "&").replace("\\/", "/")
-        }.toList()
+        val streamSources = episode.streamUrl.orEmpty().mapNotNull { s ->
+            val u = s.url ?: return@mapNotNull null
+            (s.source ?: "Stream") to u
+        }
+        // Flatten downloadUrl tree: format -> resolutions[] -> download_links[].
+        val downloadSources = episode.downloadUrl.orEmpty().flatMap { fmt ->
+            fmt.resolutions.orEmpty().flatMap { res ->
+                res.downloadLinks.orEmpty().mapNotNull { dl ->
+                    val u = dl.url ?: return@mapNotNull null
+                    val label = "${dl.host ?: "?"} ${res.quality ?: ""}".trim()
+                    label to u
+                }
+            }
+        }
 
         runAllAsync(
             {
                 streamSources.amap { (label, url) ->
                     runCatching {
-                        loadFixedExtractor(
-                            url,
-                            label,
-                            "$mainUrl/",
-                            subtitleCallback,
-                            callback
-                        )
+                        loadFixedExtractor(url, label, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
             },
             {
-                downloadSources.amap { (host, url) ->
+                downloadSources.amap { (label, url) ->
                     runCatching {
-                        loadFixedExtractor(
-                            url,
-                            host,
-                            "$mainUrl/",
-                            subtitleCallback,
-                            callback
-                        )
+                        loadFixedExtractor(url, label, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
             }
@@ -281,3 +236,75 @@ class Oploverz : MainAPI() {
         }
     }
 }
+
+// ----- backapi.oploverz.ac data classes -----
+
+data class ApiMeta(
+    @JsonProperty("currentPage") val currentPage: Int? = null,
+    @JsonProperty("lastPage") val lastPage: Int? = null,
+    @JsonProperty("perPage") val perPage: Int? = null,
+    @JsonProperty("total") val total: Int? = null,
+)
+
+data class ApiGenre(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("slug") val slug: String? = null,
+)
+
+data class ApiSeries(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("slug") val slug: String? = null,
+    @JsonProperty("description") val description: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
+    @JsonProperty("status") val status: String? = null,
+    @JsonProperty("poster") val poster: String? = null,
+    @JsonProperty("releaseType") val releaseType: String? = null,
+    @JsonProperty("score") val score: Double? = null,
+    @JsonProperty("genres") val genres: List<ApiGenre>? = null,
+    @JsonProperty("totalEpisodes") val totalEpisodes: Int? = null,
+)
+
+data class ApiSeriesList(
+    @JsonProperty("meta") val meta: ApiMeta? = null,
+    @JsonProperty("data") val data: List<ApiSeries>? = null,
+)
+
+data class ApiSeriesDetail(
+    @JsonProperty("data") val data: ApiSeries? = null,
+)
+
+data class ApiStream(
+    @JsonProperty("source") val source: String? = null,
+    @JsonProperty("url") val url: String? = null,
+)
+
+data class ApiDownloadLink(
+    @JsonProperty("host") val host: String? = null,
+    @JsonProperty("url") val url: String? = null,
+)
+
+data class ApiResolution(
+    @JsonProperty("quality") val quality: String? = null,
+    @JsonProperty("download_links") val downloadLinks: List<ApiDownloadLink>? = null,
+)
+
+data class ApiDownloadFormat(
+    @JsonProperty("format") val format: String? = null,
+    @JsonProperty("resolutions") val resolutions: List<ApiResolution>? = null,
+)
+
+data class ApiEpisode(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("subbed") val subbed: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("episodeNumber") val episodeNumber: String? = null,
+    @JsonProperty("downloadUrl") val downloadUrl: List<ApiDownloadFormat>? = null,
+    @JsonProperty("streamUrl") val streamUrl: List<ApiStream>? = null,
+)
+
+data class ApiEpisodeList(
+    @JsonProperty("meta") val meta: ApiMeta? = null,
+    @JsonProperty("data") val data: List<ApiEpisode>? = null,
+)

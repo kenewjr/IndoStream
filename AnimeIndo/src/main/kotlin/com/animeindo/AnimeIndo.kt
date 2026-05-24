@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
+import java.util.concurrent.atomic.AtomicInteger
 
 class AnimeIndo : MainAPI() {
     // [FIXED]: gomunime.top sekarang pakai layout Tailwind/Laravel modern,
@@ -251,8 +252,30 @@ class AnimeIndo : MainAPI() {
                             )
                         }
                     }
-                    // mega.nz/embed/<id> dan provider lain — coba extractor bawaan.
-                    else -> loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
+                    // [FIXED]: gomunime sekarang banyak pakai custom embed host
+                    // (xtwap.top, gdplayer.to, dll.) yang tidak punya extractor
+                    // di CloudStream. Stock loadExtractor() return 0 sources →
+                    // user lihat "Link loading failed". Fallback: register
+                    // iframe URL sebagai ExtractorLink langsung supaya
+                    // CloudStream pakai WebView player.
+                    else -> {
+                        val resolvedCount = AtomicInteger(0)
+                        loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
+                            resolvedCount.incrementAndGet()
+                            callback.invoke(link)
+                        }
+                        if (resolvedCount.get() == 0) {
+                            // Extractor tidak resolve — daftarkan iframe sebagai-adanya.
+                            val host = runCatching { java.net.URI(src).host }.getOrNull()
+                                ?.removePrefix("www.") ?: "Embed"
+                            callback.invoke(
+                                newExtractorLink(host, host, src) {
+                                    this.referer = "$mainUrl/"
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }

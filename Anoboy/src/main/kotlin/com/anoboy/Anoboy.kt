@@ -3,6 +3,7 @@ package com.anoboy
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
+import java.util.concurrent.atomic.AtomicInteger
 
 class Anoboy : MainAPI() {
     // [VERIFIED]: anoboy.my.id aktif per audit Mei 2026.
@@ -201,10 +202,10 @@ class Anoboy : MainAPI() {
                             ?: innerDoc.selectFirst("iframe[data-src]")?.attr("data-src")
                         if (!realIframe.isNullOrBlank()) {
                             val resolved = resolve(realIframe) ?: realIframe
-                            loadExtractor(resolved, src, subtitleCallback, callback)
+                            registerWithFallback(resolved, src, subtitleCallback, callback)
                         }
                     } else {
-                        loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
+                        registerWithFallback(src, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
             }
@@ -212,6 +213,33 @@ class Anoboy : MainAPI() {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    // [HELPER]: wraps loadExtractor() with a no-source fallback. If CloudStream's
+    // stock extractors don't recognize the host (custom blogger wrappers, rotating
+    // anoboy mirror domains), we still register the iframe URL itself so the
+    // WebView player has something to play.
+    private suspend fun registerWithFallback(
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val resolvedCount = AtomicInteger(0)
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            resolvedCount.incrementAndGet()
+            callback.invoke(link)
+        }
+        if (resolvedCount.get() == 0) {
+            val host = runCatching { java.net.URI(url).host }.getOrNull()
+                ?.removePrefix("www.") ?: "Embed"
+            callback.invoke(
+                newExtractorLink(host, host, url) {
+                    this.referer = referer
+                    this.quality = Qualities.Unknown.value
+                }
+            )
         }
     }
 }
