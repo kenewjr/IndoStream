@@ -113,17 +113,15 @@ class Nekopoi : MainAPI() {
         //   Strategy 1 — Category/genre archives (div.nk-search-results > ul > li)
         //     Uses .nk-search-item cards with PORTRAIT posters (~210x300).
         //
-        //   Strategy 2 — Homepage "Episode Terbaru" grid (li:has(div.nk-grid-thumb))
-        //     Uses .nk-grid-thumb (background-image) + .nk-jav-meta with title link.
-        //     Thumbnails are HORIZONTAL (300x200).
+        //   Strategy 2 — Current homepage "Episode Terbaru" grid
+        //     Uses div.nk-post-card with div.nk-thumb-crop (background-image)
+        //     and div.nk-post-meta containing h2 > a title and date.
+        //     Thumbnails are HORIZONTAL (300x169).
         //
-        //   Strategy 3 — Current theme broad fallback
-        //     The current site renders items as containers with <h2> titles
-        //     inside <a> links. This catches "EPISODE TERBARU", "HENTAI TERBARU",
-        //     "JAV TERBARU" sections on the homepage when the older class-based
-        //     selectors no longer match.
+        //   Strategy 3 — Legacy homepage grid (li:has(div.nk-grid-thumb))
+        //     Older theme layout, kept for backward compat.
         //
-        // We skip nk-post-card entirely (sticky/announcement posts).
+        //   Strategy 4 — Broad fallback for arbitrary h2-based item containers.
 
         // Strategy 1: Category/genre archive items
         // The "HASIL" section on category/genre pages may use different container
@@ -143,20 +141,25 @@ class Nekopoi : MainAPI() {
             // Portrait posters (search/genre/category)
             searchItems to false
         } else {
-            // Strategy 2: Homepage grid-thumb items (legacy theme)
-            val gridItems = document.select("li:has(div.nk-grid-thumb)")
-                .mapNotNull { it.toGridThumbResult() }
-            if (gridItems.isNotEmpty()) {
-                gridItems to true
+            // Strategy 2: Current homepage layout — div.nk-post-card grid inside
+            // the "Episode Terbaru" section. Each card has a thumb-crop background
+            // image and a meta block with the h2 title link and date.
+            val postCardItems = document.select("div.nk-episodes-area div.nk-post-card, #nk-episode-grid div.nk-post-card, div.nk-post-card")
+                .mapNotNull { it.toPostCardResult() }
+            if (postCardItems.isNotEmpty()) {
+                postCardItems to true
             } else {
-                // Strategy 3: Broad fallback for current theme
-                // Look for any list items or article elements containing an <h2>
-                // with a link — this matches the "TERBARU" sections on the
-                // current homepage where each item has an <a> wrapping or
-                // adjacent to an <h2> title element.
-                val broadItems = document.select("li:has(h2 a[href]), li:has(a[href] h2), article:has(h2 a[href])")
-                    .mapNotNull { it.toBroadResult() }
-                broadItems to true
+                // Strategy 3: Legacy homepage grid-thumb items
+                val gridItems = document.select("li:has(div.nk-grid-thumb)")
+                    .mapNotNull { it.toGridThumbResult() }
+                if (gridItems.isNotEmpty()) {
+                    gridItems to true
+                } else {
+                    // Strategy 4: Broad fallback — any list/article with an h2 link
+                    val broadItems = document.select("li:has(h2 a[href]), li:has(a[href] h2), article:has(h2 a[href])")
+                        .mapNotNull { it.toBroadResult() }
+                    broadItems to true
+                }
             }
         }
 
@@ -302,6 +305,44 @@ class Nekopoi : MainAPI() {
             ?.attr("style").orEmpty()
         val posterFromStyle = backgroundImageRegex.find(thumbStyle)?.groupValues?.getOrNull(1)
         val poster = fixUrlNull(imgSrc ?: posterFromStyle)
+
+        return newAnimeSearchResponse(title, href, TvType.NSFW) {
+            this.posterUrl = poster
+        }
+    }
+
+    /**
+     * Parses a "Episode Terbaru" card from the current homepage layout.
+     * Markup:
+     *   <div class="nk-post-card">
+     *     <div class="nk-post-thumb">
+     *       <div class="nk-thumb-crop"
+     *            style="background-image: url('https://nekopoi.care/.../thumb.jpg')"></div>
+     *     </div>
+     *     <div class="nk-post-meta">
+     *       <h2><a href="...">Title</a></h2>
+     *       <span><span class="dashicons ..."></span>Sabtu, 23 Mei 2026</span>
+     *       <!-- optional series link span for episode posts -->
+     *       <span><a href="https://nekopoi.care/hentai/<series>/">Series Name</a></span>
+     *     </div>
+     *   </div>
+     */
+    private fun Element.toPostCardResult(): AnimeSearchResponse? {
+        val titleLink = this.selectFirst("div.nk-post-meta h2 a[href]")
+            ?: this.selectFirst("h2 a[href]")
+            ?: this.selectFirst("a[href]")
+            ?: return null
+        val title = titleLink.text().trim().ifBlank { null }
+            ?: titleLink.attr("title").takeIf { it.isNotBlank() }
+            ?: return null
+        val href = getProperAnimeLink(titleLink.attr("href"))
+
+        // Thumbnail comes from inline CSS background-image on .nk-thumb-crop
+        val thumbStyle = this.selectFirst("div.nk-thumb-crop, div.nk-post-thumb [style*=background-image]")
+            ?.attr("style").orEmpty()
+        val posterFromStyle = backgroundImageRegex.find(thumbStyle)?.groupValues?.getOrNull(1)
+        val imgSrc = this.selectFirst("img")?.attr("src")?.takeIf { it.isNotBlank() }
+        val poster = fixUrlNull(posterFromStyle ?: imgSrc)
 
         return newAnimeSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = poster
