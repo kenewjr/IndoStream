@@ -915,9 +915,10 @@ class Nekopoi : MainAPI() {
 
                             fileLinks.amap ads@{ adsLink ->
                                 try {
+                                    val embedUrl = fixEmbed(adsLink) ?: return@ads
                                     coroutineScope {
                                         loadExtractor(
-                                            fixEmbed(adsLink) ?: return@ads,
+                                            embedUrl,
                                             "$mainUrl/",
                                             subtitleCallback,
                                         ) { link ->

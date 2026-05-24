@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.extractors.JWPlayer
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -152,7 +153,6 @@ class Otakudesu : MainAPI() {
 
         // Score extraction
         val scoreStr = getInfoByLabel("Skor") ?: ""
-        val rating = scoreStr.toDoubleOrNull()?.times(1000)?.toInt()
 
         val description = document.select("div.sinopc > p").text().trim()
             .takeIf { it.isNotBlank() }
@@ -194,7 +194,7 @@ class Otakudesu : MainAPI() {
             backgroundPosterUrl = tracker?.cover
             this.year = year
             this.duration = duration
-            this.rating = rating
+            addScore(scoreStr)
             addEpisodes(DubStatus.Subbed, episodes)
             showStatus = status
             plot = description
