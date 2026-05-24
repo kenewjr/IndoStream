@@ -145,39 +145,66 @@ class Anoboy : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         return try {
-            val document = app.get(data).document
+            val document = app.get(data, referer = "$mainUrl/").document
 
-            // [FIX]: endpoint gomunimes.com sudah mati. Sekarang Anoboy
-            // memakai single iframe dengan data-src ke /uploads/adsbatch*.php
-            // yang merender embed di dalam. Ambil semua iframe (data-src + src),
-            // resolve, dan serahkan ke loadExtractor.
-            val iframeSources = document.select("iframe")
-                .mapNotNull { iframe ->
-                    val raw = iframe.attr("data-src").takeIf { it.isNotBlank() }
-                        ?: iframe.attr("src").takeIf { it.isNotBlank() }
-                    raw?.let { src ->
-                        when {
-                            src.startsWith("http") -> src
-                            src.startsWith("//") -> "https:$src"
-                            src.startsWith("/") -> "$mainUrl$src"
-                            else -> "$mainUrl/$src"
-                        }
-                    }
+            // Anoboy renders embed iframes with a relative path on `data-src`
+            // (e.g. /uploads/adsbatch720.php?...). The actual host that serves
+            // those embeds is encoded in an inline JS variable `xd` as base64
+            // and prefixed at runtime via atob(xd). We decode that here so the
+            // plugin keeps working when the host rotates.
+            val embedHostRegex = Regex("""xd\s*=\s*['"]([A-Za-z0-9+/=]+)['"]""")
+            val embedHost: String = embedHostRegex.find(document.html())
+                ?.groupValues?.getOrNull(1)
+                ?.let {
+                    runCatching {
+                        String(android.util.Base64.decode(it, android.util.Base64.DEFAULT))
+                            .trim().trimEnd('/')
+                    }.getOrNull()
                 }
-                .distinct()
+                ?: "https://ww1.anoboy.boo"
 
-            if (iframeSources.isEmpty()) return false
+            fun resolve(raw: String): String? {
+                val u = raw.trim().ifBlank { return null }
+                return when {
+                    u.startsWith("http") -> u
+                    u.startsWith("//") -> "https:$u"
+                    u.startsWith("/") -> "$embedHost$u"
+                    else -> "$embedHost/$u"
+                }
+            }
 
-            iframeSources.amap { src ->
+            // Source 1: the primary <iframe id=mediaplayer> data-src
+            val iframeSources = document.select("iframe").mapNotNull { iframe ->
+                (iframe.attr("data-src").takeIf { it.isNotBlank() }
+                    ?: iframe.attr("data-litespeed-src").takeIf { it.isNotBlank() }
+                    ?: iframe.attr("src").takeIf { it.isNotBlank() })
+                    ?.let { resolve(it) }
+            }
+
+            // Source 2: every mirror anchor inside .vmiror blocks (PC 720, 360,
+            // YUp, etc.). data-video is the same kind of relative URL.
+            val mirrorSources = document.select(".vmiror a[data-video]").mapNotNull { a ->
+                a.attr("data-video").takeIf { it.isNotBlank() }?.let { resolve(it) }
+            }
+
+            val allSources = (iframeSources + mirrorSources).distinct()
+            if (allSources.isEmpty()) return false
+
+            allSources.amap { src ->
                 runCatching {
-                    if (src.contains("/uploads/adsbatch", ignoreCase = true)) {
+                    if (src.contains("/uploads/adsbatch", ignoreCase = true) ||
+                        src.contains("/uploads/yup/", ignoreCase = true)
+                    ) {
+                        // adsbatch / yup wrappers contain a nested real iframe
                         val innerDoc = app.get(src, referer = data).document
                         val realIframe = innerDoc.selectFirst("iframe[src]")?.attr("src")
+                            ?: innerDoc.selectFirst("iframe[data-src]")?.attr("data-src")
                         if (!realIframe.isNullOrBlank()) {
-                            loadExtractor(realIframe, mainUrl, subtitleCallback, callback)
+                            val resolved = resolve(realIframe) ?: realIframe
+                            loadExtractor(resolved, src, subtitleCallback, callback)
                         }
                     } else {
-                        loadExtractor(src, mainUrl, subtitleCallback, callback)
+                        loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
             }

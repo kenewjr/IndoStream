@@ -176,33 +176,55 @@ class Oploverz : MainAPI() {
 
         runAllAsync(
                 {
-                    document.select("div#server ul li div").amap {
-                        val dataPost = it.attr("data-post")
+                    val serverItems = document.select(
+                        "div#server ul li div, " +
+                        "ul#playeroptionsul li, " +
+                        "div.player-list ul li"
+                    )
+                    serverItems.amap {
+                        val dataPost = it.attr("data-post").ifBlank { it.attr("data-id") }
                         val dataNume = it.attr("data-nume")
                         val dataType = it.attr("data-type")
+                        if (dataPost.isBlank() || dataNume.isBlank()) return@amap
 
-                        val iframe =
-                            app.post(
-                                url = "$mainUrl/wp-admin/admin-ajax.php",
-                                data =
-                                    mapOf(
-                                        "action" to "player_ajax",
+                        // Action name has rotated through Dooplay history; try
+                        // each one until something returns an iframe.
+                        val actions = listOf("player_ajax", "doo_player_ajax", "tonton_ajax")
+                        var iframe: String? = null
+                        for (action in actions) {
+                            val resp = runCatching {
+                                app.post(
+                                    url = "$mainUrl/wp-admin/admin-ajax.php",
+                                    data = mapOf(
+                                        "action" to action,
                                         "post" to dataPost,
                                         "nume" to dataNume,
                                         "type" to dataType
                                     ),
-                                referer = data,
-                                headers =
-                                    mapOf(
-                                        "X-Requested-With" to
-                                                "XMLHttpRequest"
-                                    )
-                            )
-                                .document
-                                .select("iframe")
-                                .attr("src")
+                                    referer = data,
+                                    headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+                                ).document.select("iframe").attr("src")
+                            }.getOrNull()
+                            if (!resp.isNullOrBlank()) { iframe = resp; break }
+                        }
+                        iframe?.takeIf { it.isNotBlank() }?.let {
+                            loadExtractor(fixUrl(it), "$mainUrl/", subtitleCallback, callback)
+                        }
+                    }
 
-                        loadExtractor(fixUrl(iframe), "$mainUrl/", subtitleCallback, callback)
+                    // Fallback: directly take any iframe rendered on the page
+                    // (some episodes ship the embed inline without the AJAX swap).
+                    document.select("iframe").mapNotNull {
+                        (it.attr("src").takeIf { s -> s.isNotBlank() }
+                            ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
+                            ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() })
+                    }.distinct().amap { src ->
+                        runCatching {
+                            val resolved = if (src.startsWith("http")) src
+                                else if (src.startsWith("//")) "https:$src"
+                                else "$mainUrl$src"
+                            loadExtractor(resolved, "$mainUrl/", subtitleCallback, callback)
+                        }
                     }
                 },
                 {

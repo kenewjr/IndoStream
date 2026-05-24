@@ -80,12 +80,9 @@ class Dubbindo : MainAPI() {
         val description = document.select("div.watch-video-description p").text()
         val recommendations =
                 document.select("div.related-video-wrapper").mapNotNull { it.toSearchResult() }
-        val video =
+        // Path 1: static <source> children of the <video> tag (older pages).
+        val staticSources =
                 document.select("video#my-video source, video source").map {
-                    // [FIX]: dulu pakai attr("size") padahal HTML pakai
-                    // attribut `res` ("res='360'") atau `data-quality`.
-                    // Sebelumnya quality selalu null sehingga fallback ke
-                    // Qualities.Unknown dan player kadang gagal pilih.
                     Video(
                             it.attr("src").takeIf { s -> s.isNotBlank() },
                             it.attr("res").takeIf { s -> s.isNotBlank() }
@@ -94,6 +91,34 @@ class Dubbindo : MainAPI() {
                             it.attr("type"),
                     )
                 }.filter { it.src != null }
+
+        // Path 2: videojs initializer — the current site uses
+        // `player.updateSrc([{ src: '...', type: '...', label: '...', res: 360 }])`
+        // entirely from inline JS, with no static <source> child. Parse each
+        // object literal so loadLinks() still receives a real URL.
+        val dynamicSources = if (staticSources.isEmpty()) {
+            val scriptHtml = document.select("script").joinToString("\n") { it.data() }
+            val updateSrcRegex = Regex(
+                """updateSrc\s*\(\s*\[(.*?)\]\s*\)""",
+                setOf(RegexOption.DOT_MATCHES_ALL)
+            )
+            val arrayBody = updateSrcRegex.find(scriptHtml)?.groupValues?.getOrNull(1).orEmpty()
+            val objectRegex = Regex("""\{[^{}]*}""", RegexOption.DOT_MATCHES_ALL)
+            val srcRegex = Regex("""src\s*:\s*['"]([^'"]+)['"]""")
+            val typeRegex = Regex("""type\s*:\s*['"]([^'"]+)['"]""")
+            val resRegex = Regex("""res\s*:\s*['"]?(\d+)['"]?""")
+            objectRegex.findAll(arrayBody).mapNotNull { match ->
+                val obj = match.value
+                val src = srcRegex.find(obj)?.groupValues?.getOrNull(1) ?: return@mapNotNull null
+                Video(
+                    src = src,
+                    res = resRegex.find(obj)?.groupValues?.getOrNull(1),
+                    type = typeRegex.find(obj)?.groupValues?.getOrNull(1),
+                )
+            }.toList()
+        } else emptyList()
+
+        val video = (staticSources + dynamicSources).distinctBy { it.src }
 
         return newMovieLoadResponse(title, url, TvType.Movie, video.toJson()) {
             posterUrl = poster

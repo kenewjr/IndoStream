@@ -182,18 +182,20 @@ class Kuramanime : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // [FIX]: implementasi loadLinks. Sebelumnya hanya return true tanpa
-        // mengembalikan link apa-apa, sehingga player gagal memulai.
         return try {
-            val document = app.get(data).document
+            val res = app.get(data)
+            val document = res.document
+            val sessionCookies = res.cookies
 
-            // Strategy 1: iframe player utama
-            val iframes = document.select("iframe[src], iframe[data-src]")
+            // Path 1: every iframe in the page (handles src, data-src, and
+            // Litespeed's data-litespeed-src lazy attribute).
+            val iframes = document.select("iframe")
                 .mapNotNull {
                     (it.attr("src").takeIf { s -> s.isNotBlank() }
-                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() })
+                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
+                        ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() })
                 }
-                .map { if (it.startsWith("http")) it else "https:$it" }
+                .map { if (it.startsWith("http")) it else if (it.startsWith("//")) "https:$it" else "$mainUrl$it" }
                 .distinct()
 
             iframes.amap { src ->
@@ -202,8 +204,42 @@ class Kuramanime : MainAPI() {
                 }
             }
 
-            // Strategy 2: video tag dengan source langsung (fallback)
-            document.select("video source").mapNotNull { it.attr("src").takeIf { s -> s.isNotBlank() } }
+            // Path 2: server-swap AJAX. Newer Kuramanime episode pages render
+            // server tabs as <a class="server-tabs" data-href="..."> that the
+            // frontend fetches via XHR with the session cookie. We replay that
+            // request server-side so each server's iframe ends up at loadExtractor.
+            val serverHrefs = document.select(
+                "a.server-tabs[data-href], a.tab-server[data-href], " +
+                "select#changeServer option[value^=http], " +
+                "select.server-list option[value^=http]"
+            ).mapNotNull {
+                (it.attr("data-href").takeIf { s -> s.isNotBlank() }
+                    ?: it.attr("value").takeIf { s -> s.isNotBlank() })
+            }.distinct()
+
+            serverHrefs.amap { href ->
+                runCatching {
+                    val embed = app.get(
+                        href,
+                        referer = data,
+                        cookies = sessionCookies,
+                        headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+                    ).document.selectFirst("iframe")?.attr("src")
+                    if (!embed.isNullOrBlank()) {
+                        val resolved = if (embed.startsWith("http")) embed
+                            else if (embed.startsWith("//")) "https:$embed"
+                            else "$mainUrl$embed"
+                        com.lagradost.cloudstream3.utils.loadExtractor(
+                            resolved, mainUrl, subtitleCallback, callback
+                        )
+                    }
+                }
+            }
+
+            // Path 3: direct <video><source>...</source></video> as a fallback
+            // when the page rendered the player without an iframe wrapper.
+            document.select("video source")
+                .mapNotNull { it.attr("src").takeIf { s -> s.isNotBlank() } }
                 .forEach { src ->
                     callback.invoke(
                         com.lagradost.cloudstream3.utils.newExtractorLink(
@@ -217,7 +253,9 @@ class Kuramanime : MainAPI() {
                     )
                 }
 
-            iframes.isNotEmpty() || document.selectFirst("video source") != null
+            iframes.isNotEmpty() ||
+                serverHrefs.isNotEmpty() ||
+                document.selectFirst("video source") != null
         } catch (e: Exception) {
             false
         }

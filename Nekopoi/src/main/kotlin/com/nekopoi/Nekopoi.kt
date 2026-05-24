@@ -330,18 +330,29 @@ class Nekopoi : MainAPI() {
         )
 
 
-        val genreElement = infoBlock.select("*:contains(Genre), *:contains(GENRE)")
-            .firstOrNull { el ->
-                val ownText = el.ownText().trim()
-                ownText.contains("Genre", ignoreCase = true) || ownText.contains("GENRE")
-            }
-            ?: infoBlock.select("p:contains(Genre), li:contains(Genre), span:contains(Genre), div:contains(Genre)")
-                .firstOrNull()
+        // The current Nekopoi theme renders genre as
+        //   <p><b>Genre</b> : <a>Hentai</a>, <a>Big Oppai</a></p>
+        // The label "Genre" is wrapped in <b>, so the parent's ownText() is
+        // just ":" — the old `ownText().contains("Genre")` filter never matched
+        // and tags came back empty. We now pick the *smallest* element whose
+        // direct text mentions "Genre" so we don't accidentally take a huge
+        // ancestor (like <article>) that contains unrelated genre links.
+        val genreCandidates = infoBlock.select(
+            "p:contains(Genre), li:contains(Genre), span:contains(Genre), div:contains(Genre), " +
+            "p:contains(GENRE), li:contains(GENRE), span:contains(GENRE), div:contains(GENRE)"
+        )
+        val genreElement = genreCandidates.minByOrNull { it.text().length }
+            ?: infoBlock.select("*:matchesOwn((?i)Genre)").firstOrNull()
+
         val tags = if (genreElement != null) {
-            val genreLinks = genreElement.select("a").map { it.text().trim() }.filter { it.isNotEmpty() }
+            // Prefer the <a> tags; only fall back to splitting raw text when
+            // the genres aren't hyperlinked.
+            val genreLinks = genreElement.select("a")
+                .map { it.text().trim() }
+                .filter { it.isNotEmpty() && !it.equals("Genre", ignoreCase = true) }
             genreLinks.ifEmpty {
                 genreElement.text()
-                    .substringAfter(":")
+                    .replace(Regex("(?i)genre\\s*:?"), "")
                     .split(",")
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
