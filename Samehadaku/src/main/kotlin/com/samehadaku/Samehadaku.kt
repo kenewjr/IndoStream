@@ -110,8 +110,23 @@ class Samehadaku : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
-        return document.select("main#main div.animepost").mapNotNull { it.toSearchResult() }
+        // [ENHANCED]: pagination — sebelumnya cuma halaman 1 yang ditampilkan,
+        // hasilnya pencarian dengan banyak match jadi terpotong. Kita iterasi
+        // sampai 5 halaman atau sampai halaman tidak menambahkan hasil baru.
+        val results = mutableListOf<SearchResponse>()
+        val seenHrefs = mutableSetOf<String>()
+        for (page in 1..5) {
+            val url = if (page == 1) "$mainUrl/?s=$query"
+                else "$mainUrl/page/$page/?s=$query"
+            val pageResults = runCatching { app.get(url).document }.getOrNull()
+                ?.select("main#main div.animepost")
+                ?.mapNotNull { it.toSearchResult() }
+                ?: emptyList()
+            val newResults = pageResults.filter { seenHrefs.add(it.url) }
+            if (newResults.isEmpty()) break
+            results.addAll(newResults)
+        }
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -193,17 +208,51 @@ class Samehadaku : MainAPI() {
 
         val document = app.get(data).document
 
-        document.select("div#downloadb li").map { el ->
-            el.select("a").amap {
-                loadFixedExtractor(
-                        fixUrl(it.attr("href")),
-                        el.select("strong").text(),
-                        "$mainUrl/",
-                        subtitleCallback,
-                        callback
-                )
+        // [ENHANCED]: dua jalur paralel — streaming server (iframe embed) DAN
+        // download mirrors. Sebelumnya hanya download yang di-extract, jadi
+        // user mesti buka mirror eksternal untuk play. Sekarang iframe server
+        // yang sudah ter-render di halaman juga ikut dipetakan.
+        runAllAsync(
+            {
+                // Streaming iframes — selector kandidat yang sering dipakai oleh
+                // template Samehadaku (varies per skin). Kita coba semua.
+                val iframeSrcs = document.select(
+                    "div.player-embed iframe, " +
+                    "div#pembed iframe, " +
+                    "div.iframe-server iframe, " +
+                    "div.responsive-embed-container iframe, " +
+                    "main iframe[src]"
+                ).mapNotNull {
+                    (it.attr("src").takeIf { s -> s.isNotBlank() }
+                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
+                        ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() })
+                }.distinct()
+
+                iframeSrcs.amap { src ->
+                    runCatching {
+                        val resolved = when {
+                            src.startsWith("http") -> src
+                            src.startsWith("//") -> "https:$src"
+                            else -> "$mainUrl$src"
+                        }
+                        loadExtractor(resolved, "$mainUrl/", subtitleCallback, callback)
+                    }
+                }
+            },
+            {
+                document.select("div#downloadb li").map { el ->
+                    el.select("a").amap {
+                        loadFixedExtractor(
+                                fixUrl(it.attr("href")),
+                                el.select("strong").text(),
+                                "$mainUrl/",
+                                subtitleCallback,
+                                callback
+                        )
+                    }
+                }
             }
-        }
+        )
 
         return true
     }

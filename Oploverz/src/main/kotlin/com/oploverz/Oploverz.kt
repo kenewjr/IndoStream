@@ -171,78 +171,79 @@ class Oploverz : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // Oploverz is a SvelteKit SPA. The episode page ships every episode's
+        // data as inline JS object literals (no <iframe>, no Dooplay AJAX).
+        // Pattern looks like:
+        //   episodes:[{id:..., episodeNumber:"6", downloadUrl:[...],
+        //     streamUrl:[{source:"Nonton Online 360p", url:"https://..."}],
+        //     content:null, ...}]
+        // We pluck the slice for the active episode and hand each URL to
+        // loadExtractor. Blogger video.g, acefile.co, akirabox, filedon, and
+        // 4meplayer embeds are all resolved by CloudStream's stock extractors.
+        val pageHtml = app.get(data, referer = "$mainUrl/").text
+        val epNum = Regex("""/episode/(\d+)""").find(data)?.groupValues?.getOrNull(1)
 
-        val document = app.get(data).document
+        // Locate the episode object's bounds. We anchor on episodeNumber:"<n>"
+        // (with non-greedy lookups around it) so we don't accidentally pull
+        // sources from a neighbouring episode's record.
+        val epBlock: String = if (epNum != null) {
+            val anchor = Regex("""episodeNumber:"$epNum"""").find(pageHtml)
+            if (anchor != null) {
+                val start = anchor.range.first
+                // Stop at the next episodeNumber:"..." OR end of episodes:[ array.
+                val tail = pageHtml.substring(start)
+                val nextAnchor = Regex("""episodeNumber:"(?!$epNum")""").find(tail, 1)
+                tail.substring(0, nextAnchor?.range?.first ?: tail.length.coerceAtMost(60_000))
+            } else pageHtml
+        } else pageHtml
+
+        // Stream URLs (player embeds).
+        val streamArrayRegex = Regex(
+            """streamUrl:\[(.*?)](?=,content)""",
+            RegexOption.DOT_MATCHES_ALL
+        )
+        val streamArray = streamArrayRegex.find(epBlock)?.groupValues?.getOrNull(1).orEmpty()
+        val streamObjRegex = Regex("""\{source:"([^"]+)",url:"([^"]+)"}""")
+        val streamSources = streamObjRegex.findAll(streamArray).map {
+            it.groupValues[1] to it.groupValues[2].replace("\\u0026", "&").replace("\\/", "/")
+        }.toList()
+
+        // Download URLs (host-by-host, per quality, per format).
+        val downloadHostRegex = Regex("""\{host:"([^"]+)",url:"([^"]+)"}""")
+        val downloadSources = downloadHostRegex.findAll(epBlock).map {
+            it.groupValues[1] to it.groupValues[2].replace("\\u0026", "&").replace("\\/", "/")
+        }.toList()
 
         runAllAsync(
-                {
-                    val serverItems = document.select(
-                        "div#server ul li div, " +
-                        "ul#playeroptionsul li, " +
-                        "div.player-list ul li"
-                    )
-                    serverItems.amap {
-                        val dataPost = it.attr("data-post").ifBlank { it.attr("data-id") }
-                        val dataNume = it.attr("data-nume")
-                        val dataType = it.attr("data-type")
-                        if (dataPost.isBlank() || dataNume.isBlank()) return@amap
-
-                        // Action name has rotated through Dooplay history; try
-                        // each one until something returns an iframe.
-                        val actions = listOf("player_ajax", "doo_player_ajax", "tonton_ajax")
-                        var iframe: String? = null
-                        for (action in actions) {
-                            val resp = runCatching {
-                                app.post(
-                                    url = "$mainUrl/wp-admin/admin-ajax.php",
-                                    data = mapOf(
-                                        "action" to action,
-                                        "post" to dataPost,
-                                        "nume" to dataNume,
-                                        "type" to dataType
-                                    ),
-                                    referer = data,
-                                    headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-                                ).document.select("iframe").attr("src")
-                            }.getOrNull()
-                            if (!resp.isNullOrBlank()) { iframe = resp; break }
-                        }
-                        iframe?.takeIf { it.isNotBlank() }?.let {
-                            loadExtractor(fixUrl(it), "$mainUrl/", subtitleCallback, callback)
-                        }
-                    }
-
-                    // Fallback: directly take any iframe rendered on the page
-                    // (some episodes ship the embed inline without the AJAX swap).
-                    document.select("iframe").mapNotNull {
-                        (it.attr("src").takeIf { s -> s.isNotBlank() }
-                            ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
-                            ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() })
-                    }.distinct().amap { src ->
-                        runCatching {
-                            val resolved = if (src.startsWith("http")) src
-                                else if (src.startsWith("//")) "https:$src"
-                                else "$mainUrl$src"
-                            loadExtractor(resolved, "$mainUrl/", subtitleCallback, callback)
-                        }
-                    }
-                },
-                {
-                    document.select("div#download tr").amap { el ->
-                        el.select("a").amap {
-                            loadFixedExtractor(
-                                fixUrl(it.attr("href")),
-                                el.select("strong").text(),
-                                "$mainUrl/",
-                                subtitleCallback,
-                                callback
-                            )
-                        }
+            {
+                streamSources.amap { (label, url) ->
+                    runCatching {
+                        loadFixedExtractor(
+                            url,
+                            label,
+                            "$mainUrl/",
+                            subtitleCallback,
+                            callback
+                        )
                     }
                 }
-            )
+            },
+            {
+                downloadSources.amap { (host, url) ->
+                    runCatching {
+                        loadFixedExtractor(
+                            url,
+                            host,
+                            "$mainUrl/",
+                            subtitleCallback,
+                            callback
+                        )
+                    }
+                }
+            }
+        )
 
-        return true
+        return streamSources.isNotEmpty() || downloadSources.isNotEmpty()
     }
 
     private suspend fun loadFixedExtractor(

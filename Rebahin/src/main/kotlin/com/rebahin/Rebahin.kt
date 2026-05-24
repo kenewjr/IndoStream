@@ -13,15 +13,12 @@ import java.net.URI
 import org.jsoup.nodes.Element
 
 open class Rebahin : MainAPI() {
-    // Domain saat ini per user (May 2026): rebahin.ink. IP fallback bila domain
-    // diblokir ISP: 143.198.193.183 — biarkan sebagai catatan, tidak dipakai
-    // sebagai primary karena bare-IP biasanya gagal TLS handshake.
-    override var mainUrl = "https://rebahin.ink"
+    override var mainUrl = "https://rebahinxxi3.biz/"
     private var directUrl: String? = null
     override var name = "Rebahin"
     override val hasMainPage = true
     override var lang = "id"
-    open var mainServer = "https://rebahin.ink"
+    open var mainServer = "https://rebahinxxi3.biz/"
     override val supportedTypes =
             setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
 
@@ -133,37 +130,22 @@ open class Rebahin : MainAPI() {
                         .toIntOrNull()
         val actors = document.select("span[itemprop=actor] > a").map { it.select("span").text() }
 
-        // [FIX]: baseLink bisa kosong → episode list jadi kosong. Pakai
-        // fallback ke URL halaman saat ini.
-        val baseLink = document.select("div#mv-info > a").firstOrNull()?.attr("href")
-            ?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
-            ?: url
+        val baseLink = fixUrl(document.select("div#mv-info > a").attr("href"))
 
         return if (tvType == TvType.TvSeries) {
-            // [UPDATED SELECTOR]: tambah fallback selector untuk episode list.
-            val baseDoc = runCatching { app.get(baseLink).document }.getOrNull()
             val episodes =
-                    baseDoc?.select(
-                        "div#list-eps > a, " +
-                        "div.list-eps a, " +
-                        "div#list-eps a, " +
-                        "div.eplister a"
-                    )
-                            ?.map { Pair(it.text(), it.attr("data-iframe")) }
-                            ?.filter { it.first.isNotBlank() }
-                            ?.groupBy { it.first }
-                            ?.map { eps ->
+                    app.get(baseLink)
+                            .document
+                            .select("div#list-eps > a")
+                            .map { Pair(it.text(), it.attr("data-iframe")) }
+                            .groupBy { it.first }
+                            .map { eps ->
                                 newEpisode(
-                                        eps.value.map {
-                                            runCatching { fixUrl(base64Decode(it.second)) }
-                                                .getOrDefault(it.second)
-                                        }.toString()){
+                                        eps.value.map { fixUrl(base64Decode(it.second)) }.toString()){
                                         this.name = eps.key
-                                        this.episode = Regex("(\\d+)").find(eps.key)
-                                            ?.groupValues?.getOrNull(1)?.toIntOrNull()
-                                            ?: eps.key.filter { it.isDigit() }.toIntOrNull()
+                                        this.episode = eps.key.filter { it.isDigit() }.toIntOrNull()
                                 }
-                            } ?: emptyList()
+                            }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.year = year
@@ -234,7 +216,7 @@ open class Rebahin : MainAPI() {
                         )
                         .document
 
-        document.select("script").find { it.data().contains("config =") }?.data()?.let { script ->
+        document.select("script").find { it.data().contains("window.juicyData") }?.data()?.let { script ->
             Regex("\"file\":\\s?\"(.+.m3u8)\"").find(script)?.groupValues?.getOrNull(1)?.let { link
                 ->
                 M3u8Helper.generateM3u8(

@@ -54,7 +54,18 @@ class Otakudesu : MainAPI() {
     override val mainPage =
             mainPageOf(
                     "$mainUrl/ongoing-anime/page/" to "Anime Ongoing",
-                    "$mainUrl/complete-anime/page/" to "Anime Completed"
+                    "$mainUrl/complete-anime/page/" to "Anime Completed",
+                    // [ENHANCED]: pintasan genre populer.
+                    "$mainUrl/genres/action/page/" to "Genre: Action",
+                    "$mainUrl/genres/adventure/page/" to "Genre: Adventure",
+                    "$mainUrl/genres/comedy/page/" to "Genre: Comedy",
+                    "$mainUrl/genres/drama/page/" to "Genre: Drama",
+                    "$mainUrl/genres/fantasy/page/" to "Genre: Fantasy",
+                    "$mainUrl/genres/romance/page/" to "Genre: Romance",
+                    "$mainUrl/genres/school/page/" to "Genre: School",
+                    "$mainUrl/genres/slice-of-life/page/" to "Genre: Slice of Life",
+                    "$mainUrl/genres/supernatural/page/" to "Genre: Supernatural",
+                    "$mainUrl/genres/mecha/page/" to "Genre: Mecha"
             )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -68,12 +79,12 @@ class Otakudesu : MainAPI() {
         val href = this.selectFirst("a")?.attr("href") ?: return null
         val posterUrl = this.selectFirst("div.thumbz > img")?.attr("src")
             ?: this.selectFirst("img")?.attr("src")
-        val epNum =
-                this.selectFirst("div.epz")
-                        ?.ownText()
-                        ?.replace(Regex("\\D"), "")
-                        ?.trim()
-                        ?.toIntOrNull()
+        // [FIX]: ongoing list rendered "Segera Hadir" because ownText() can
+        // return whitespace-only on some markup variants (icon span eats the
+        // text). Use full text() and pull the first integer instead.
+        val epNum = this.selectFirst("div.epz")
+            ?.text()
+            ?.let { Regex("(\\d+)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
             addSub(epNum)
