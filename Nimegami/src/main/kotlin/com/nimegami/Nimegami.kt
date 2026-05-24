@@ -162,14 +162,39 @@ class Nimegami : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
-
-        tryParseJson<ArrayList<Sources>>(base64Decode(data))?.map { sources ->
-            sources.url?.amap { url ->
-                loadFixedExtractor(url, sources.format, "$mainUrl/", subtitleCallback, callback)
+        // [FIX]: bungkus dengan try-catch agar parsing JSON yang gagal
+        // (kalau struktur load() berubah dan data tidak base64-encoded)
+        // tidak crash playback. Tambahkan fallback ke iframe parsing langsung
+        // dari halaman jika data tidak bisa di-decode.
+        return try {
+            var success = false
+            val parsed = runCatching { tryParseJson<ArrayList<Sources>>(base64Decode(data)) }.getOrNull()
+            parsed?.forEach { sources ->
+                sources.url?.amap { url ->
+                    runCatching {
+                        loadFixedExtractor(url, sources.format, "$mainUrl/", subtitleCallback, callback)
+                        success = true
+                    }
+                }
             }
-        }
 
-        return true
+            // [FALLBACK]: data bukan JSON base64 — perlakukan sebagai URL
+            // halaman episode dan ekstrak iframe langsung.
+            if (!success && data.startsWith("http")) {
+                val document = app.get(data).document
+                document.select("iframe[src]").amap { iframe ->
+                    val src = iframe.attr("src").takeIf { it.isNotBlank() } ?: return@amap
+                    runCatching {
+                        loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
+                        success = true
+                    }
+                }
+            }
+
+            success
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private suspend fun loadFixedExtractor(

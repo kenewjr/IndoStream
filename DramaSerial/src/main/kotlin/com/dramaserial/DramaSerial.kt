@@ -71,7 +71,13 @@ class DramaSerial : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        val title = document.selectFirst("h1.entry-title")!!.text().trim()
+        // [FIX]: line 74 NPE — `!!` pada selector yang bisa null. Pakai
+        // multi-strategy fallback: h1.entry-title, og:title, atau title tag.
+        val title = document.selectFirst("h1.entry-title")?.text()?.trim()
+            ?: document.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
+            ?: document.selectFirst("title")?.text()?.trim()
+                ?.removeSuffix(" - JuraganFilm")?.removeSuffix(" – JuraganFilm")?.trim()
+            ?: ""
         val poster = fixUrlNull(document.selectFirst("figure.pull-left img")?.attr("src"))
         val tags = document.select("div.gmr-movie-innermeta span:contains(Genre:) a").map { it.text() }
         val year = document.selectFirst("div.gmr-movie-innermeta span:contains(Year:) a")

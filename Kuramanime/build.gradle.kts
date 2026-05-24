@@ -1,4 +1,4 @@
-dependencies {
+﻿dependencies {
 //    implementation(kotlin("stdlib"))
     implementation("com.github.Blatzar:NiceHttp:0.4.11")
     implementation("org.jsoup:jsoup:1.18.3")
@@ -16,7 +16,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
 }
 // use an integer for version numbers
-version = 40
+version = 41
 
 
 cloudstream {

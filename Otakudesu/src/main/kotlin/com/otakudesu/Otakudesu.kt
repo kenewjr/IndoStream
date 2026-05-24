@@ -81,17 +81,32 @@ class Otakudesu : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.get("$mainUrl/?s=$query&post_type=anime")
-                .document
-                .select("ul.chivsrc > li")
-                .mapNotNull {
-                    val title = it.selectFirst("h2 > a")?.ownText()?.trim() ?: return@mapNotNull null
-                    val href = it.selectFirst("h2 > a")?.attr("href") ?: return@mapNotNull null
-                    val posterUrl = it.selectFirst("img")?.attr("src")
+        // [ENHANCED]: load semua hasil pencarian dengan pagination penuh.
+        // Sebelumnya hanya halaman pertama saja yang ditampilkan.
+        // Kita iterasi sampai halaman tidak lagi mengembalikan hasil baru
+        // (hard cap 10 halaman untuk menghindari abuse).
+        val results = mutableListOf<SearchResponse>()
+        val seenHrefs = mutableSetOf<String>()
+        for (page in 1..10) {
+            val url = if (page == 1) "$mainUrl/?s=$query&post_type=anime"
+            else "$mainUrl/page/$page/?s=$query&post_type=anime"
+            val pageResults = runCatching { app.get(url).document }.getOrNull()
+                ?.select("ul.chivsrc > li")
+                ?.mapNotNull { li ->
+                    val title = li.selectFirst("h2 > a")?.ownText()?.trim() ?: return@mapNotNull null
+                    val href = li.selectFirst("h2 > a")?.attr("href") ?: return@mapNotNull null
+                    val posterUrl = li.selectFirst("img")?.attr("src")
                     newAnimeSearchResponse(title, href, TvType.Anime) {
                         this.posterUrl = posterUrl
                     }
-                }
+                } ?: emptyList()
+            // Stop kalau halaman ini kosong atau semua hasilnya sudah dilihat
+            // (dedupe via href set untuk menangani pagination yang loop).
+            val newResults = pageResults.filter { seenHrefs.add(it.url) }
+            if (newResults.isEmpty()) break
+            results.addAll(newResults)
+        }
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse {

@@ -149,13 +149,27 @@ class Kuronime : MainAPI() {
         )
         val description = document.select("span.const > p").text()
 
-        val episodes = document.select("div.bixbox.bxcl > ul > li").mapNotNull {
+        // [UPDATED SELECTOR]: tambah fallback agar episode tetap terdeteksi
+        // bila theme update mengubah class wrapper. Sebelumnya `div.bixbox.bxcl`
+        // sangat spesifik dan banyak halaman mengembalikan list kosong.
+        val episodes = document.select(
+            "div.bixbox.bxcl > ul > li, " +
+            "div.bxcl ul li, " +
+            "ul.episodes li, " +
+            "div.eplister ul li, " +
+            "div.episodelist ul li"
+        ).mapNotNull {
             val link = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val name = it.selectFirst("a")?.text() ?: return@mapNotNull null
             val episode =
-                Regex("(\\d+[.,]?\\d*)").find(name)?.groupValues?.getOrNull(0)?.toIntOrNull()
-            newEpisode(link){ this.episode = episode}
-        }.reversed()
+                Regex("Episode\\s*(\\d+)", RegexOption.IGNORE_CASE).find(name)
+                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            newEpisode(link){
+                this.name = name
+                this.episode = episode
+            }
+        }.distinctBy { it.data }.reversed()
 
         val tracker = APIHolder.getTracker(listOf(title),TrackerType.getTypes(type),year,true)
 

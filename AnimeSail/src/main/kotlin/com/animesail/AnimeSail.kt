@@ -161,29 +161,36 @@ class AnimeSail : MainAPI() {
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
-        // --- Corrected Episode Mapping ---
+        // [UPDATED SELECTOR]: relax dari `ul.daftar > li` saja ke fallback
+        // chain. Theme AnimeSail varies; daftar/eplister/episodelist semua
+        // dipakai pada halaman berbeda.
         val episodes =
-            document.select("ul.daftar > li") // Assuming this is your episode list selector
-                .mapNotNull { episodeElement -> // Use mapNotNull to safely skip if data is missing
+            document.select(
+                "ul.daftar > li, " +
+                "ul.daftar li, " +
+                "div.eplister ul li, " +
+                "div.episodelist ul li"
+            )
+                .mapNotNull { episodeElement ->
                     val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
                     val episodeLink = fixUrl(anchor.attr("href"))
                     val episodeName = anchor.text()
 
                     val episodeNumber =
-                        // Renamed from 'episode' to avoid confusion with property name
-                        Regex("Episode\\s?(\\d+)")
+                        Regex("Episode\\s?(\\d+)", RegexOption.IGNORE_CASE)
                             .find(episodeName)
                             ?.groupValues
-                            ?.getOrNull(1) // IMPORTANT: Group 1 for the number
+                            ?.getOrNull(1)
                             ?.toIntOrNull()
+                            ?: episodeName.filter { it.isDigit() }.toIntOrNull()
 
-                    newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
-                        this.name = episodeName       // Set the 'name' property
-                        this.episode = episodeNumber  // Set the 'episode' property (the number)
+                    newEpisode(episodeLink) {
+                        this.name = episodeName
+                        this.episode = episodeNumber
                     }
                 }
+                .distinctBy { it.data }
                 .reversed()
-        // --- End Corrected Episode Mapping ---
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 

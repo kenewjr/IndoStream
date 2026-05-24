@@ -81,13 +81,19 @@ class Dubbindo : MainAPI() {
         val recommendations =
                 document.select("div.related-video-wrapper").mapNotNull { it.toSearchResult() }
         val video =
-                document.select("video#my-video source").map {
+                document.select("video#my-video source, video source").map {
+                    // [FIX]: dulu pakai attr("size") padahal HTML pakai
+                    // attribut `res` ("res='360'") atau `data-quality`.
+                    // Sebelumnya quality selalu null sehingga fallback ke
+                    // Qualities.Unknown dan player kadang gagal pilih.
                     Video(
-                            it.attr("src"),
-                            it.attr("size"),
+                            it.attr("src").takeIf { s -> s.isNotBlank() },
+                            it.attr("res").takeIf { s -> s.isNotBlank() }
+                                ?: it.attr("size").takeIf { s -> s.isNotBlank() }
+                                ?: it.attr("data-quality"),
                             it.attr("type"),
                     )
-                }
+                }.filter { it.src != null }
 
         return newMovieLoadResponse(title, url, TvType.Movie, video.toJson()) {
             posterUrl = poster
@@ -103,27 +109,46 @@ class Dubbindo : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
-
-        tryParseJson<List<Video>>(data)?.map { video ->
-            if (video.type == "video/mp4" ||
-                            video.type == "video/x-msvideo" ||
-                            video.type == "video/x-matroska"
-            ) {               
-                callback.invoke(
-						newExtractorLink(
-							this.name,
-							this.name,
-							video.src.toString()
-						){
-							this.quality = video.res?.toIntOrNull() ?: Qualities.Unknown.value
-						}
-					)
-            } else {
-                loadExtractor(video.src ?: return@map, "", subtitleCallback, callback)
+        // [FIX]: tambah try-catch + parse JSON-nya null-safe. Kalau data kosong
+        // (mis. video.src null), sebelumnya tidak ada link sama sekali yang
+        // dikirim ke callback sehingga player gagal.
+        return try {
+            val videos = tryParseJson<List<Video>>(data) ?: emptyList()
+            var success = false
+            videos.forEach { video ->
+                val src = video.src?.takeIf { it.isNotBlank() } ?: return@forEach
+                if (video.type == "video/mp4" ||
+                    video.type == "video/x-msvideo" ||
+                    video.type == "video/x-matroska" ||
+                    src.endsWith(".mp4", true) || src.endsWith(".mkv", true)
+                ) {
+                    callback.invoke(
+                        newExtractorLink(
+                            this.name,
+                            this.name,
+                            src
+                        ) {
+                            this.referer = "$mainUrl/"
+                            // [FIX]: parse quality lebih robust — coba res dulu,
+                            // kalau tidak ada coba parse dari URL pakai regex.
+                            this.quality = video.res?.toIntOrNull()
+                                ?: Regex("(\\d{3,4})p", RegexOption.IGNORE_CASE)
+                                    .find(src)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                ?: Qualities.Unknown.value
+                        }
+                    )
+                    success = true
+                } else {
+                    runCatching {
+                        loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
+                        success = true
+                    }
+                }
             }
+            success
+        } catch (e: Exception) {
+            false
         }
-
-        return true
     }
 
     data class Video(

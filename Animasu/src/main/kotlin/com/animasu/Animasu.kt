@@ -157,23 +157,54 @@ class Animasu : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
-        document.select(".mobius > .mirror > option")
-                .mapNotNull {
-                    fixUrl(
-                            Jsoup.parse(base64Decode(it.attr("value"))).select("iframe").attr("src")
-                    ) to it.text()
+        // [FIX]: tambah error handling + fallback selector. Sebelumnya jika
+        // attr("value") kosong, base64Decode throw exception dan tidak ada
+        // link yang dikembalikan.
+        return try {
+            val document = app.get(data).document
+            // [UPDATED SELECTOR]: cover varian markup yang berbeda.
+            val mirrors = document.select(
+                ".mobius > .mirror > option, " +
+                ".mobius .mirror option, " +
+                "select.mirror option, " +
+                ".mirrorstream li a"
+            )
+
+            val streamPairs = mirrors.mapNotNull { opt ->
+                val raw = opt.attr("value").takeIf { it.isNotBlank() }
+                    ?: opt.attr("data-content").takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                val iframeSrc = runCatching {
+                    Jsoup.parse(base64Decode(raw)).select("iframe").attr("src")
+                }.getOrNull()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val quality = opt.text().ifBlank { "Default" }
+                fixUrl(iframeSrc) to quality
+            }
+
+            // [FALLBACK]: jika dropdown mirror kosong, coba ambil iframe langsung.
+            val pairs = streamPairs.ifEmpty {
+                document.select("iframe[src]").mapNotNull { iframe ->
+                    val src = iframe.attr("src").takeIf { it.isNotBlank() }
+                        ?: return@mapNotNull null
+                    fixUrl(src) to "Default"
                 }
-                .amap { (iframe, quality) ->
+            }
+
+            pairs.amap { (iframe, quality) ->
+                runCatching {
                     loadFixedExtractor(
-                            iframe.fixIframe(),
-                            quality,
-                            "$mainUrl/",
-                            subtitleCallback,
-                            callback
+                        iframe.fixIframe(),
+                        quality,
+                        "$mainUrl/",
+                        subtitleCallback,
+                        callback
                     )
                 }
-        return true
+            }
+            pairs.isNotEmpty()
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private suspend fun loadFixedExtractor(

@@ -182,7 +182,44 @@ class Kuramanime : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // [FIX]: implementasi loadLinks. Sebelumnya hanya return true tanpa
+        // mengembalikan link apa-apa, sehingga player gagal memulai.
+        return try {
+            val document = app.get(data).document
 
-        return true
+            // Strategy 1: iframe player utama
+            val iframes = document.select("iframe[src], iframe[data-src]")
+                .mapNotNull {
+                    (it.attr("src").takeIf { s -> s.isNotBlank() }
+                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() })
+                }
+                .map { if (it.startsWith("http")) it else "https:$it" }
+                .distinct()
+
+            iframes.amap { src ->
+                runCatching {
+                    com.lagradost.cloudstream3.utils.loadExtractor(src, mainUrl, subtitleCallback, callback)
+                }
+            }
+
+            // Strategy 2: video tag dengan source langsung (fallback)
+            document.select("video source").mapNotNull { it.attr("src").takeIf { s -> s.isNotBlank() } }
+                .forEach { src ->
+                    callback.invoke(
+                        com.lagradost.cloudstream3.utils.newExtractorLink(
+                            this.name,
+                            this.name,
+                            src
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.quality = com.lagradost.cloudstream3.utils.Qualities.Unknown.value
+                        }
+                    )
+                }
+
+            iframes.isNotEmpty() || document.selectFirst("video source") != null
+        } catch (e: Exception) {
+            false
+        }
     }
 }

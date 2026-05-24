@@ -154,22 +154,33 @@ class LayarKaca : MainAPI() {
                 }
 
         return if (tvType == TvType.TvSeries) {
+            // [UPDATED SELECTOR]: relax dari pattern numeric-only `a:matches(\\d+)`
+            // ke selector lebih luas. Theme LK21 sering memakai struktur
+            // berbeda (`div.episodios li`, `ul.episodes li`) tergantung versi.
             val episodes =
-                    document.select("div.episode-list > a:matches(\\d+)")
-                            .map {
-                                val href = fixUrl(it.attr("href"))
-                                val episode = it.text().toIntOrNull()
-                                val season =
-                                        it.attr("href")
-                                                .substringAfter("season-")
-                                                .substringBefore("-")
-                                                .toIntOrNull()
-                                newEpisode(href){
-                                    this.name = "Episode $episode"
+                    document.select(
+                        "div.episode-list > a:matches(\\d+), " +
+                        "div.episode-list a, " +
+                        "ul.episodios li a, " +
+                        "div.eplister ul li a, " +
+                        "ul.episodes li a"
+                    )
+                            .mapNotNull { el ->
+                                val href = el.attr("href").takeIf { it.isNotBlank() }
+                                    ?.let { fixUrl(it) } ?: return@mapNotNull null
+                                val text = el.text().trim()
+                                val episode = Regex("(\\d+)").find(text)
+                                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                val season = href.substringAfter("season-", "")
+                                    .substringBefore("-").toIntOrNull()
+                                newEpisode(href) {
+                                    this.name = if (text.startsWith("Episode", true)) text
+                                                else "Episode $episode"
                                     this.season = season
                                     this.episode = episode
                                 }
                             }
+                            .distinctBy { it.data }
                             .reversed()
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster

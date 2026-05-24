@@ -118,14 +118,33 @@ class Oploverz : MainAPI() {
                         ?.text()
                         ?.filter { it.isDigit() }
                         ?.toIntOrNull()
+        // [UPDATED SELECTOR]: relax dari `div.lstepsiode.listeps ul li`
+        // ke fallback chain yang menangani perubahan markup. Episode parsing
+        // sekarang juga lebih robust pakai regex Episode/Eps.
         val episodes =
-                document.select("div.lstepsiode.listeps ul li")
+                document.select(
+                    "div.lstepsiode.listeps ul li, " +
+                    "div.listeps ul li, " +
+                    "div.eplister ul li, " +
+                    "ul.lstepsiode li, " +
+                    "div.episodelist ul li"
+                )
                         .mapNotNull {
                             val header = it.selectFirst("a") ?: return@mapNotNull null
-                            val episode = header.text().trim().toIntOrNull()
+                            val text = header.text().trim()
+                            val episode = Regex("Episode\\s*(\\d+)|Eps\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                                .find(text)
+                                ?.let { m -> m.groupValues.drop(1).firstOrNull { it.isNotBlank() } }
+                                ?.toIntOrNull()
+                                ?: text.toIntOrNull()
+                                ?: text.filter { c -> c.isDigit() }.toIntOrNull()
                             val link = fixUrl(header.attr("href"))
-                            newEpisode(link){ this.episode = episode}
+                            newEpisode(link){
+                                this.name = text
+                                this.episode = episode
+                            }
                         }
+                        .distinctBy { it.data }
                         .reversed()
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)

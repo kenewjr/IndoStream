@@ -26,11 +26,19 @@ class DutaMovie : MainAPI() {
 
     override val mainPage =
             mainPageOf(
+                    // [FIX]: tambah lebih banyak kategori. Sebelumnya hanya 5
+                    // sehingga konten non-animasi yang tampil sangat terbatas.
+                    "page/%d/" to "Latest",
                     "category/box-office/page/%d/" to "Box Office",
                     "category/serial-tv/page/%d/" to "Serial TV",
                     "category/animation/page/%d/" to "Animasi",
+                    "category/film-bioskop/page/%d/" to "Film Bioskop",
+                    "category/drama-korea/page/%d/" to "Drama Korea",
+                    "category/drama-china/page/%d/" to "Drama China",
                     "country/korea/page/%d/" to "Serial TV Korea",
                     "country/indonesia/page/%d/" to "Serial TV Indonesia",
+                    "country/usa/page/%d/" to "USA",
+                    "country/jepang/page/%d/" to "Jepang",
             )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -104,7 +112,16 @@ class DutaMovie : MainAPI() {
                         .text()
                         .trim()
                         .toIntOrNull()
-        val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
+        // [FIX]: deteksi tipe konten dari kehadiran episode list di halaman,
+        // bukan hanya dari URL slug "/tv/". Sebelumnya banyak series tidak
+        // dikenali sebagai TvSeries karena URL-nya pakai prefix lain
+        // (misalnya /serial-tv/, /drama/) sehingga hanya animasi yang lolos.
+        val episodeAnchors = document.select("div.vid-episodes a, div.gmr-listseries a")
+        val tvType = when {
+            episodeAnchors.isNotEmpty() -> TvType.TvSeries
+            url.contains("/tv/") -> TvType.TvSeries
+            else -> TvType.Movie
+        }
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
         val rating =
@@ -119,25 +136,22 @@ class DutaMovie : MainAPI() {
                 document.select("div.idmuvi-rp ul li").mapNotNull { it.toRecommendResult() }
 
         return if (tvType == TvType.TvSeries) {
+            // [FIX]: parsing episode/season menggunakan regex yang robust,
+            // bukan name.split(" ").lastOrNull()?.filter { isDigit() } yang
+            // sering salah pada title seperti "Season 1 Episode 12 [Sub Indo]".
             val episodes =
-                    document.select("div.vid-episodes a, div.gmr-listseries a")
+                    episodeAnchors
                             .map { eps ->
                                 val href = fixUrl(eps.attr("href"))
-                                val name = eps.text()
-                                val episode =
-                                        name.split(" ")
-                                                .lastOrNull()
-                                                ?.filter { it.isDigit() }
-                                                ?.toIntOrNull()
-                                val season =
-                                        name.split(" ")
-                                                .firstOrNull()
-                                                ?.filter { it.isDigit() }
-                                                ?.toIntOrNull()                               
+                                val name = eps.attr("title").ifBlank { eps.text() }
+                                val episode = Regex("Episode\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                                    .find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                val season = Regex("Season\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                                    .find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
                                 newEpisode(href) {
                                     this.name = name
                                     this.episode = episode
-                                    this.season = if (name.contains(" ")) season else null
+                                    this.season = season
                                 }
                             }
                             .filter { it.episode != null }

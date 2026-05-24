@@ -80,38 +80,84 @@ class Pusatfilm : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        return super.load(url).apply {
-            when (this) {
-                is TvSeriesLoadResponse -> {
-                    val document = app.get(url).document
-                    this.episodes =
-                        document.select("div.vid-episodes a, div.gmr-listseries a")
-                            .map { eps ->
-                                val href = fixUrl(eps.attr("href"))
-                                val name = eps.attr("title")
-                                val episode =
-                                    "Episode\\s*(\\d+)"
-                                        .toRegex()
-                                        .find(name)
-                                        ?.groupValues
-                                        ?.get(1)
-                                val season =
-                                    "Season\\s*(\\d+)"
-                                        .toRegex()
-                                        .find(name)
-                                        ?.groupValues
-                                        ?.get(1)
-                                newEpisode(
-                                    href){
-                                    this.name = name
-                                    this.season = season?.toIntOrNull()
-                                    this.episode = episode?.toIntOrNull()
-                                }
-                            }
-                            .filter { it.episode != null }
+        // [FIX]: Pusatfilm sebelumnya memanggil super.load(url) yang akan
+        // throw NotImplementedError karena MainAPI tidak punya implementasi
+        // default. Kita implementasi load() langsung di sini.
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title")?.text()?.trim()
+            ?: document.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
+            ?: ""
+        val poster = fixUrlNull(
+            document.selectFirst("figure.pull-left img")?.attr("src")
+                ?: document.selectFirst("meta[property=og:image]")?.attr("content")
+        )
+        val description = document.select("div.entry-content > p").joinToString("\n") { it.text() }
+        val tags = document.select("a[href*=/genre/]").map { it.text() }
+        val year = Regex("\\((\\d{4})\\)").find(title)?.groupValues?.get(1)?.toIntOrNull()
+
+        // Detect tipe konten dari ada/tidaknya episode list
+        val episodeAnchors = document.select("div.vid-episodes a, div.gmr-listseries a")
+        val isSeries = episodeAnchors.isNotEmpty()
+
+        return if (isSeries) {
+            val episodes = episodeAnchors.mapNotNull { eps ->
+                val href = fixUrl(eps.attr("href"))
+                val name = eps.attr("title").ifBlank { eps.text() }
+                val episode = Regex("Episode\\s*(\\d+)").find(name)
+                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val season = Regex("Season\\s*(\\d+)").find(name)
+                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                if (episode == null) null
+                else newEpisode(href) {
+                    this.name = name
+                    this.season = season
+                    this.episode = episode
                 }
             }
-        }!!
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+            }
+        }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // [FIX]: implementasi minimal — ambil semua iframe di halaman dan
+        // serahkan ke loadExtractor. Sebelumnya tidak ada implementasi sama
+        // sekali sehingga pemutaran throw "operation not implemented".
+        return try {
+            val document = app.get(data).document
+            val iframes = document.select("iframe[src], iframe[data-litespeed-src]")
+                .mapNotNull {
+                    (it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() }
+                        ?: it.attr("src").takeIf { s -> s.isNotBlank() })
+                }
+                .distinct()
+            iframes.amap { iframe ->
+                runCatching {
+                    val src = if (iframe.startsWith("http")) iframe
+                    else "https:$iframe"
+                    com.lagradost.cloudstream3.utils.loadExtractor(src, mainUrl, subtitleCallback, callback)
+                }
+            }
+            iframes.isNotEmpty()
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun Element.getImageAttr(): String {

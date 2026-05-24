@@ -10,7 +10,8 @@ class DramaidPlugin: Plugin() {
     override fun load(context: Context) {
         // All providers should be added in this manner. Please don't edit the providers list directly.
         registerMainAPI(Dramaid())
-        registerMainAPI(Oppadrama())
+        // [REMOVED]: Oppadrama dihapus per request audit — domain bare-IP
+        // 45.11.57.64 tidak lagi resolve.
         registerExtractorAPI(Vanfem())
         registerExtractorAPI(Filelions())
         registerExtractorAPI(Gcam())

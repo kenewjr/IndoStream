@@ -36,11 +36,38 @@ class Samehadaku : MainAPI() {
         }
     }
 
+    // [ENHANCED]: tambah kategori filter agar user bisa browse berdasarkan
+    // genre, status (ongoing/completed), tahun, dan jenis konten.
+    // Plus tambah halaman "Jadwal Rilis" dan "Movie".
     override val mainPage =
             mainPageOf(
                     "$mainUrl/page/" to "Episode Terbaru",
                     "$mainUrl/" to "HomePage",
                     "$mainUrl/daftar-anime-2/page/" to "Daftar Anime",
+                    // Status filter
+                    "$mainUrl/anime-status/ongoing/page/" to "Ongoing",
+                    "$mainUrl/anime-status/completed/page/" to "Completed",
+                    // Type filter
+                    "$mainUrl/anime-type/tv/page/" to "TV",
+                    "$mainUrl/anime-type/movie/page/" to "Movie",
+                    "$mainUrl/anime-type/ova/page/" to "OVA",
+                    // Schedule
+                    "$mainUrl/jadwal-rilis/page/" to "Jadwal Rilis",
+                    // Popular genres
+                    "$mainUrl/genre/action/page/" to "Genre: Action",
+                    "$mainUrl/genre/adventure/page/" to "Genre: Adventure",
+                    "$mainUrl/genre/comedy/page/" to "Genre: Comedy",
+                    "$mainUrl/genre/drama/page/" to "Genre: Drama",
+                    "$mainUrl/genre/fantasy/page/" to "Genre: Fantasy",
+                    "$mainUrl/genre/isekai/page/" to "Genre: Isekai",
+                    "$mainUrl/genre/romance/page/" to "Genre: Romance",
+                    "$mainUrl/genre/school/page/" to "Genre: School",
+                    "$mainUrl/genre/shounen/page/" to "Genre: Shounen",
+                    "$mainUrl/genre/supernatural/page/" to "Genre: Supernatural",
+                    // Recent years
+                    "$mainUrl/anime-year/2026/page/" to "Tahun 2026",
+                    "$mainUrl/anime-year/2025/page/" to "Tahun 2025",
+                    "$mainUrl/anime-year/2024/page/" to "Tahun 2024",
             )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

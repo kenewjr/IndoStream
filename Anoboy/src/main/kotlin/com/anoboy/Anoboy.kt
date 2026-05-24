@@ -1,17 +1,11 @@
 package com.anoboy
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import java.util.ArrayList
-
+import org.jsoup.nodes.Element
 
 class Anoboy : MainAPI() {
-    // Mirror aktif (per probe May 2026):
-    //   https://anoboy.my.id  (primary, .id ccTLD paling stabil)
-    //   https://anoboy.sh     (fallback, juga 200 OK)
-    //   https://anoboy.si     (timeout saat probe terakhir, tetap dicatat)
-    // Kalau primary diblokir ISP, swap ke salah satu fallback di atas.
+    // [VERIFIED]: anoboy.my.id aktif per audit Mei 2026.
     override var mainUrl = "https://anoboy.my.id"
     override var name = "Anoboy"
     override val hasMainPage = true
@@ -26,8 +20,6 @@ class Anoboy : MainAPI() {
     )
 
     companion object {
-        private const val MAIN_IMAGE_URL = "https://ww25.upload.anoboy.life" // Corrected name
-
         fun getType(t: String): TvType {
             return if (t.contains("OVA", true) || t.contains("Special", true)) TvType.OVA
             else if (t.contains("Movie", true)) TvType.AnimeMovie
@@ -43,88 +35,104 @@ class Anoboy : MainAPI() {
         }
     }
 
+    // [FIX]: endpoint /my-ajax sudah 404 — pakai HTML scraping langsung.
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Latest Release",
-        "$mainUrl/category/anime-movie/page/" to "Anime Movie",
-        "$mainUrl/category/live-action-movie/page/" to "Live Action Movie",
-        "$mainUrl/category/anime/page/" to "Anime",
-        )
+        "$mainUrl/ongoing/page/" to "Ongoing",
+        "$mainUrl/complete/page/" to "Complete",
+        "$mainUrl/movies/page/" to "Movie",
+        "$mainUrl/live-action/page/" to "Live Action",
+    )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val home = app.get(
-            "$mainUrl/my-ajax?page=$page${request.data}",
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        )
-            .parsedSafe<Responses>()?.data
-            ?.mapNotNull { media ->
-                media.toSearchResponse()
-            } ?: throw ErrorLoadingException("Invalid Json response")
+        // [FIX]: invalid JSON karena /my-ajax 404 → parse HTML langsung.
+        val document = runCatching {
+            app.get("${request.data}$page/").document
+        }.getOrNull() ?: return newHomePageResponse(request.name, emptyList())
+
+        // [UPDATED SELECTOR]: kartu sekarang div.xrelated > a.nwa
+        val home = document.select("div.xrelated").mapNotNull { it.toSearchResponse() }
         return newHomePageResponse(request.name, home)
     }
 
-    private fun Anime.toSearchResponse(): SearchResponse? {
-        return newAnimeSearchResponse(
-            postTitle ?: return null,
-            "$mainUrl/anime/$postName", // Assuming mainUrl is a class property
-            TvType.TvSeries,
-        ) {
-            this.posterUrl = "$MAIN_IMAGE_URL/$image" // Use the updated constant name
-            addSub(totalEpisode?.toIntOrNull())
+    private fun Element.toSearchResponse(): SearchResponse? {
+        val anchor = this.selectFirst("a.nwa") ?: this.selectFirst("a[href]") ?: return null
+        val href = anchor.attr("href").let { h ->
+            if (h.startsWith("http")) h else "$mainUrl${if (h.startsWith("/")) h else "/$h"}"
+        }
+        val title = anchor.selectFirst("div.titlelist")?.text()?.trim()
+            ?: anchor.selectFirst("img")?.attr("alt")?.trim()
+            ?: return null
+        val poster = anchor.selectFirst("img")?.let {
+            it.attr("src").takeIf { s -> s.isNotBlank() }
+                ?: it.attr("data-src")
+        }
+        val epNum = anchor.selectFirst("div.eplist")?.text()
+            ?.let { Regex("(\\d+)").find(it)?.value?.toIntOrNull() }
+        return newAnimeSearchResponse(title, href, TvType.Anime) {
+            this.posterUrl = poster
+            addSub(epNum)
         }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.get(
-            "$mainUrl/my-ajax?page=1&limit=10&action=load_search_movie&keyword=$query",
-            referer = "$mainUrl/search/?keyword=$query",
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsedSafe<Responses>()?.data
-            ?.mapNotNull { media ->
-                media.toSearchResponse()
-            } ?: throw ErrorLoadingException("Invalid Json reponse")
+        val document = runCatching {
+            app.get("$mainUrl/?s=${query.replace(" ", "+")}").document
+        }.getOrNull() ?: return emptyList()
+        return document.select("div.xrelated").mapNotNull { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        val title = document.selectFirst(".entry-title")?.text().toString()
-        val poster = document.selectFirst(".thumbposter > img")?.attr("src")
-        val tags = document.select(".genxed > a").map { it.text() }
-        val type = document.selectFirst("div.info-content .spe span:last-child")?.ownText()?.lowercase() ?: "tv"
+        val title = document.selectFirst(".entry-title, h1.title-post")?.text()?.trim()
+            ?: document.selectFirst("h1")?.text()?.trim()
+            ?: ""
 
-        val year = Regex("\\d, (\\d*)").find(
-            document.selectFirst("div.info-content .spe span.split")?.ownText().toString()
-        )?.groupValues?.get(1)?.toIntOrNull()
-        val status = getStatus(document.selectFirst(".spe > span")!!.ownText())
-        val description = document.select("div[itemprop = description] > p").text()
-// Inside the .map { ... } block in your load function:
+        val poster = document.selectFirst(".thumbposter img, .thumbhd img, .post-thumb img")
+            ?.attr("src")
+            ?: document.selectFirst("meta[property=og:image]")?.attr("content")
 
-        val episodes = document.select(".eplister > ul > li").mapNotNull { episodeElement -> // Switched to mapNotNull
-            val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null // Get the anchor tag
-            val link = anchor.attr("href")
-            val episodeNameText = episodeElement.selectFirst(".epl-title")?.text() ?: anchor.text() // Get the full title
+        val tags = document.select(".genxed a, .genre a, a[rel*=tag]").map { it.text() }
+        val typeText = document.selectFirst("div.info-content .spe span:last-child")
+            ?.ownText()?.lowercase()
+            ?: document.select(".infolist li").firstOrNull { it.text().contains("Type", true) }
+                ?.text()
+            ?: "tv"
+        val statusText = document.selectFirst(".spe > span")?.ownText()
+            ?: document.select(".infolist li").firstOrNull { it.text().contains("Status", true) }?.text()
+            ?: "Completed"
 
-            val episodeNumber = Regex("Episode\\s?(\\d+)")
-                .find(episodeNameText)
-                ?.groupValues
-                ?.getOrNull(1) // Group 1 for the actual number
-                ?.toIntOrNull()
-            newEpisode(link) { // 'link' is the 'data' argument
-                this.name = episodeNameText       // Set the 'name' property (full title)
-                this.episode = episodeNumber      // Set the 'episode' property (the number)
+        val description = document.select("div[itemprop=description], .sinops, .post-body p")
+            .text().trim()
+
+        val episodes = document.select(".eplister ul li, ul.ulinklist li")
+            .mapNotNull { ep ->
+                val anchor = ep.selectFirst("a") ?: return@mapNotNull null
+                val link = anchor.attr("href").let { h ->
+                    if (h.startsWith("http")) h else "$mainUrl${if (h.startsWith("/")) h else "/$h"}"
+                }
+                val epName = ep.selectFirst(".epl-title")?.text() ?: anchor.text().trim()
+                val epNum = Regex("Episode\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                newEpisode(link) {
+                    this.name = epName
+                    this.episode = epNum
+                }
             }
-        }.reversed()
-        return newAnimeLoadResponse(title, url, getType(type)) {
+            .ifEmpty { listOf(newEpisode(url) { this.name = title }) }
+            .reversed()
+
+        return newAnimeLoadResponse(title, url, getType(typeText)) {
             engName = title
             posterUrl = poster
-            this.year = year
             addEpisodes(DubStatus.Subbed, episodes)
-            showStatus = status
+            showStatus = getStatus(statusText)
             plot = description
             this.tags = tags
         }
@@ -136,69 +144,47 @@ class Anoboy : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // [FIXED]: Anoboy v2.x menggunakan single iframe dengan data-src yang
-        // mengarah ke /uploads/adsbatch720.php?url=<token>&origin=<host>.
-        // Server lama gomunimes.com sudah tidak digunakan; sekarang origin
-        // adalah Blogspot mirror. Kita ambil iframe dengan data-src maupun src,
-        // resolve URL absolut, lalu serahkan ke loadExtractor.
-        val document = runCatching { app.get(data).document }.getOrNull() ?: return false
+        return try {
+            val document = app.get(data).document
 
-        val iframeSources = document.select("iframe")
-            .mapNotNull { iframe ->
-                val src = iframe.attr("data-src").takeIf { it.isNotBlank() }
-                    ?: iframe.attr("src").takeIf { it.isNotBlank() }
-                src?.let { raw ->
-                    when {
-                        raw.startsWith("http") -> raw
-                        raw.startsWith("//") -> "https:$raw"
-                        raw.startsWith("/") -> "$mainUrl$raw"
-                        else -> "$mainUrl/$raw"
+            // [FIX]: endpoint gomunimes.com sudah mati. Sekarang Anoboy
+            // memakai single iframe dengan data-src ke /uploads/adsbatch*.php
+            // yang merender embed di dalam. Ambil semua iframe (data-src + src),
+            // resolve, dan serahkan ke loadExtractor.
+            val iframeSources = document.select("iframe")
+                .mapNotNull { iframe ->
+                    val raw = iframe.attr("data-src").takeIf { it.isNotBlank() }
+                        ?: iframe.attr("src").takeIf { it.isNotBlank() }
+                    raw?.let { src ->
+                        when {
+                            src.startsWith("http") -> src
+                            src.startsWith("//") -> "https:$src"
+                            src.startsWith("/") -> "$mainUrl$src"
+                            else -> "$mainUrl/$src"
+                        }
+                    }
+                }
+                .distinct()
+
+            if (iframeSources.isEmpty()) return false
+
+            iframeSources.amap { src ->
+                runCatching {
+                    if (src.contains("/uploads/adsbatch", ignoreCase = true)) {
+                        val innerDoc = app.get(src, referer = data).document
+                        val realIframe = innerDoc.selectFirst("iframe[src]")?.attr("src")
+                        if (!realIframe.isNullOrBlank()) {
+                            loadExtractor(realIframe, mainUrl, subtitleCallback, callback)
+                        }
+                    } else {
+                        loadExtractor(src, mainUrl, subtitleCallback, callback)
                     }
                 }
             }
-            .distinct()
 
-        iframeSources.amap { src ->
-            runCatching {
-                // /uploads/adsbatch*.php?url=...&origin=<host> — fetch the page,
-                // parse the inner iframe yang sebenarnya jadi player embed.
-                if (src.contains("/uploads/adsbatch", ignoreCase = true)) {
-                    val innerDoc = app.get(src, referer = data).document
-                    val realIframe = innerDoc.selectFirst("iframe[src]")?.attr("src")
-                    if (!realIframe.isNullOrBlank()) {
-                        loadExtractor(realIframe, mainUrl, subtitleCallback, callback)
-                    }
-                } else {
-                    loadExtractor(src, mainUrl, subtitleCallback, callback)
-                }
-            }
+            true
+        } catch (e: Exception) {
+            false
         }
-
-        return iframeSources.isNotEmpty()
     }
-
-    data class Streamsb(
-        @JsonProperty("link") val link: String?,
-    )
-
-    data class Server(
-        @JsonProperty("streamsb") val streamsb: Streamsb?,
-    )
-
-    data class Sources(
-        @JsonProperty("server") val server: Server?,
-    )
-
-    data class Responses(
-        @JsonProperty("data") val data: ArrayList<Anime>? = arrayListOf(),
-    )
-
-    data class Anime(
-        @JsonProperty("post_title") val postTitle: String?,
-        @JsonProperty("post_name") val postName: String?,
-        @JsonProperty("image") val image: String?,
-        @JsonProperty("total_episode") val totalEpisode: String?,
-        @JsonProperty("salt") val salt: String?,
-    )
-
 }

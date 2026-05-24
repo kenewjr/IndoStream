@@ -141,12 +141,20 @@ class Neonime : MainAPI() {
             val poster = document.selectFirst(".imagen > img")?.attr("data-src")
             val trailer = document.selectFirst("div.youtube_id_tv iframe")?.attr("data-wpfc-original-src")?.substringAfterLast("html#")?.let{ "https://www.youtube.com/embed/$it"}
             val year = document.select("#info a[href*=\"-year/\"]").text().toIntOrNull()
-            val episodes = document.select("ul.episodios > li").mapNotNull {
-                val link = fixUrl(it.selectFirst(".episodiotitle > a")!!.attr("href"))
-                val name = it.selectFirst(".episodiotitle > a")?.ownText().toString()
-                val episode = Regex("(\\d+[.,]?\\d*)").find(name)?.groupValues?.getOrNull(0)?.toIntOrNull()
-                newEpisode(link){ this.episode = episode}
-            }.reversed()
+            // [UPDATED SELECTOR]: episode list dengan fallback + null-safety
+            // (sebelumnya `!!` pada selectFirst bisa NPE).
+            val episodes = document.select(
+                "ul.episodios > li, ul.episodios li, div.eplister ul li"
+            ).mapNotNull { item ->
+                val anchor = item.selectFirst(".episodiotitle > a, a") ?: return@mapNotNull null
+                val link = fixUrl(anchor.attr("href").takeIf { it.isNotBlank() } ?: return@mapNotNull null)
+                val name = anchor.ownText().ifBlank { anchor.text() }
+                val episode = Regex("(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                newEpisode(link){
+                    this.name = name
+                    this.episode = episode
+                }
+            }.distinctBy { it.data }.reversed()
             val tracker = APIHolder.getTracker(listOf(title),TrackerType.getTypes(TvType.Anime),year,true)
             return newAnimeLoadResponse(title, url, TvType.Anime) {
                 engName = title

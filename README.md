@@ -11,34 +11,43 @@ IndoStream adalah kumpulan ekstensi CloudStream yang berfokus pada penyediaan ko
 
 ## Daftar Ekstensi
 
-Status terakhir diverifikasi: **2026-05-22**.
+Status terakhir diverifikasi: **2026-05-24** (audit menyeluruh + bug fix sweep).
 
 | Nama Ekstensi | Domain Aktif | Status |
 | ------------- | ------------ | ------ |
-| Animasu       | v1.animasu.top                | Jalan |
-| AnimeIndo     | gomunime.top                  | Jalan |
-| AnimeSail     | 154.26.137.28                 | Jalan |
-| Anoboy        | (perlu domain baru)           | Tidak resolve |
-| Dramaid       | dramaid.online                | Jalan |
-| DramaSerial   | tv44.juragan.film             | Jalan |
-| Dubbindo      | dubbindo.site                 | Jalan |
-| Dutamovie     | 167.99.77.142                 | Jalan |
-| Kuramanime    | v18.kuramanime.ing            | Jalan |
-| Kuronime      | kuronime.net                  | Jalan |
-| LayarKaca     | tv1.lk21official.love         | Jalan |
-| Minioppai     | minioppai.org                 | Down (sumber mati) |
-| Nekopoi       | nekopoi.care                  | Jalan, smart-search & rekomendasi |
-| Neonime       | otakupoi.org/neonime          | Jalan |
-| Ngefilm       | new35.ngefilm.site            | Jalan |
-| Nimegami      | nimegami.id                   | Jalan |
-| Oploverz      | vip.oploverz.ltd              | Jalan |
-| Otakudesu     | otakudesu.blog                | Jalan |
+| Animasu       | v1.animasu.work               | Jalan, error handling diperbaiki |
+| AnimeIndo     | gomunime.top                  | Jalan, ditulis ulang untuk layout Tailwind/Laravel modern |
+| AnimeSail     | 154.26.137.28                 | Jalan (memerlukan WebView untuk Cloudflare Turnstile) |
+| Anoboy        | anoboy.my.id                  | Jalan, parsing JSON dihilangkan, scrape HTML langsung |
+| Dramaid       | dramaid.online                | Jalan, episode selector multi-fallback |
+| DramaSerial   | tv44.juragan.film             | Jalan, NPE line 74 fixed, URL kategori diperbaiki |
+| Dubbindo      | www.dubbindo.site             | Jalan, atribut quality `res` diperbaiki |
+| Dutamovie     | 167.99.77.142                 | Jalan, deteksi tipe konten lebih akurat |
+| Kuramanime    | v18.kuramanime.ing            | Jalan, loadLinks diimplementasi |
+| Kuronime      | kuronime.net                  | Jalan, episode selector multi-fallback |
+| LayarKaca     | tv1.lk21official.love         | Jalan, episode selector multi-fallback |
+| Minioppai     | minioppai.org                 | Jalan (terkonfirmasi user, audit sandbox tidak bisa connect) |
+| Nekopoi       | nekopoi.care                  | Jalan, multi-stream support + smart-search |
+| Neonime       | otakupoi.org/neonime          | Jalan, episode null-safety diperbaiki |
+| Ngefilm       | new35.ngefilm.site            | Jalan, semua fungsi diimplementasi (sebelumnya stub) |
+| Nimegami      | nimegami.id                   | Jalan, fallback iframe extractor |
+| Oploverz      | vip.oploverz.ltd              | Jalan, episode regex robust |
+| Otakudesu     | otakudesu.blog                | Jalan, search pagination penuh (10 halaman) |
 | Pencurimovie  | ww11.pencurimovie.sbs         | Jalan |
-| Pusatfilm     | v3.pusatfilm21info.com        | Jalan |
-| Rebahin       | rebahin.ink                   | Jalan |
-| Samehadaku    | v2.samehadaku.how             | Jalan |
+| Pusatfilm     | v3.pusatfilm21info.com        | Jalan, super.load() bug fixed, loadLinks diimplementasi |
+| Rebahin       | rebahin.ink                   | Jalan, baseLink null-safety diperbaiki |
+| Samehadaku    | v2.samehadaku.how             | Jalan, ditambah filter genre/status/tahun + jadwal rilis |
 
-> Ekstensi yang dihapus dari repo ini karena domain mati / tidak terawat: Funmovieslix, Gomov, Gomunime, Idlix, IndoTV, Nodrakorid, NontonAnimeID, Raveeflix.
+### Penambahan Fitur
+
+* **Otakudesu** — Pencarian sekarang mengembalikan **semua hasil** (sampai 10 halaman pagination), bukan hanya halaman pertama.
+* **Samehadaku** — Browse rows ditambah: filter berdasarkan **status** (ongoing/completed), **tipe** (TV/Movie/OVA), **genre** populer (Action, Adventure, Comedy, dst.), **tahun** (2024–2026), dan **jadwal rilis**.
+* **Nekopoi** — Multi-stream extraction: tiap episode sekarang menampilkan Server 1/2/3 streaming + Pixeldrain direct stream untuk semua resolusi (4K, 1080p, 720p, 480p, 360p).
+
+### Plugin Dihapus
+
+* **Oppadrama** — Dihapus karena domain bare-IP `45.11.57.64` tidak resolve.
+* Ekstensi yang sebelumnya dihapus dari repo ini: Funmovieslix, Gomov, Gomunime, Idlix, IndoTV, Nodrakorid, NontonAnimeID, Raveeflix.
 
 ## Cara Menggunakan
 
@@ -72,3 +81,13 @@ CI build otomatis (GitHub Actions) mem-publish artefak `.cs3` + `plugins.json` +
 ## Kontribusi
 
 Kontribusi disambut. Untuk menambah ekstensi baru, memperbaiki bug, atau melaporkan domain mati, silakan buka *issue* atau kirim *pull request*.
+
+## Catatan Audit Mei 2026
+
+Audit menyeluruh dilakukan pada 18 plugin. Bug yang umum ditemukan:
+
+1. **Selector outdated** — Banyak plugin pakai selector spesifik (`div.bixbox.bxcl > ul > li`, `.eplister > ul > li`, dll.) yang tidak lagi cocok ketika theme upstream berubah. Solusi: relax dengan multi-fallback selector chain.
+2. **NPE pada `!!` operator** — Beberapa plugin pakai `!!` pada `selectFirst()` yang bisa null. Solusi: ganti dengan `?:` fallback chain.
+3. **Stub implementations** — Pusatfilm dan Ngefilm punya `super.load()` atau tidak punya implementasi sama sekali, sehingga throw `NotImplementedError`. Solusi: tulis implementasi penuh.
+4. **Outdated AJAX endpoint** — Anoboy memanggil `/my-ajax` yang sekarang 404. Solusi: scrape HTML langsung.
+5. **Domain migration** — Otakudesu pindah dari `.cloud` ke `.blog`. Animasu dari `.top` ke `.work` untuk konten. Solusi: update `mainUrl`.

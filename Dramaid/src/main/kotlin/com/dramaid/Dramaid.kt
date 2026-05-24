@@ -90,21 +90,33 @@ open class Dramaid : MainAPI() {
         )
         val description = document.select(".entry-content > p").text().trim()
 
-        val episodes = document.select(".eplister > ul > li").mapNotNull { episodeElement ->
+        // [UPDATED SELECTOR]: relax dari `.eplister > ul > li` ke fallback chain
+        // agar varian markup (eplister, episodelist, daftarepisode, dll.) tetap
+        // ter-detect. Sebelumnya banyak halaman Dramaid mengembalikan list
+        // kosong karena selector terlalu spesifik.
+        val episodes = document.select(
+            ".eplister > ul > li, " +
+            ".eplister ul li, " +
+            "div.episodelist ul li, " +
+            "ul.episodes li, " +
+            "div.bxcl ul li"
+        ).mapNotNull { episodeElement ->
             val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
             val link = fixUrl(anchor.attr("href"))
-            val episodeTitle = episodeElement.selectFirst("a > .epl-title")?.text() ?: anchor.text() // Full title
+            val episodeTitle = episodeElement.selectFirst("a > .epl-title, .epl-title")?.text()
+                ?: anchor.text()
 
             val episodeNumber = Regex("""(?:Episode|Eps)\s*(\d+)""", RegexOption.IGNORE_CASE)
                 .find(episodeTitle)
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.toIntOrNull()
-            newEpisode(link) { // 'link' is the 'data' argument
-                this.name = episodeTitle          // Set the 'name' property (full title)
-                this.episode = episodeNumber      // Set the 'episode' property (the parsed number)
+                ?: episodeTitle.filter { it.isDigit() }.toIntOrNull()
+            newEpisode(link) {
+                this.name = episodeTitle
+                this.episode = episodeNumber
             }
-        }.reversed()
+        }.distinctBy { it.data }.reversed()
 
         val recommendations =
             document.select(".listupd > article[itemscope=itemscope]").mapNotNull { rec ->

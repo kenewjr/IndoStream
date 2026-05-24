@@ -133,22 +133,37 @@ open class Rebahin : MainAPI() {
                         .toIntOrNull()
         val actors = document.select("span[itemprop=actor] > a").map { it.select("span").text() }
 
-        val baseLink = fixUrl(document.select("div#mv-info > a").attr("href"))
+        // [FIX]: baseLink bisa kosong → episode list jadi kosong. Pakai
+        // fallback ke URL halaman saat ini.
+        val baseLink = document.select("div#mv-info > a").firstOrNull()?.attr("href")
+            ?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
+            ?: url
 
         return if (tvType == TvType.TvSeries) {
+            // [UPDATED SELECTOR]: tambah fallback selector untuk episode list.
+            val baseDoc = runCatching { app.get(baseLink).document }.getOrNull()
             val episodes =
-                    app.get(baseLink)
-                            .document
-                            .select("div#list-eps > a")
-                            .map { Pair(it.text(), it.attr("data-iframe")) }
-                            .groupBy { it.first }
-                            .map { eps ->
+                    baseDoc?.select(
+                        "div#list-eps > a, " +
+                        "div.list-eps a, " +
+                        "div#list-eps a, " +
+                        "div.eplister a"
+                    )
+                            ?.map { Pair(it.text(), it.attr("data-iframe")) }
+                            ?.filter { it.first.isNotBlank() }
+                            ?.groupBy { it.first }
+                            ?.map { eps ->
                                 newEpisode(
-                                        eps.value.map { fixUrl(base64Decode(it.second)) }.toString()){
+                                        eps.value.map {
+                                            runCatching { fixUrl(base64Decode(it.second)) }
+                                                .getOrDefault(it.second)
+                                        }.toString()){
                                         this.name = eps.key
-                                        this.episode = eps.key.filter { it.isDigit() }.toIntOrNull()
+                                        this.episode = Regex("(\\d+)").find(eps.key)
+                                            ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                            ?: eps.key.filter { it.isDigit() }.toIntOrNull()
                                 }
-                            }
+                            } ?: emptyList()
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.year = year

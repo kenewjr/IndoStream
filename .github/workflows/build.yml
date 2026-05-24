@@ -4,12 +4,8 @@ concurrency:
   group: "build"
   cancel-in-progress: true
 
-on:
-  workflow_dispatch:  # hanya jalan saat ditekan manual dari GitHub UI
+on: push
 
-# GITHUB_TOKEN default-nya read-only di repo yang dibuat setelah Feb 2023.
-# Step "Push builds" butuh write access ke branch builds, jadi kita naikkan
-# scope-nya secara eksplisit. Lebih aman daripada mengubah default repo-wide.
 permissions:
   contents: write
 
