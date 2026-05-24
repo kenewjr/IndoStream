@@ -19,12 +19,6 @@ jobs:
         with:
           path: src
 
-      - name: Checkout builds
-        uses: actions/checkout@v6
-        with:
-          ref: "builds"
-          path: "builds"
-
       - name: Checkout builds (create if not exists)
         run: |
           REPO="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
