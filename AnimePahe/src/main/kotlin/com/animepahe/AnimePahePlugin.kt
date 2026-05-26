@@ -1,5 +1,6 @@
 package com.animepahe
 
+import android.content.Context
 import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.AcraApplication.Companion.getKey
 import com.lagradost.cloudstream3.AcraApplication.Companion.setKey
@@ -17,7 +18,7 @@ enum class ServerList(
 
 @CloudstreamPlugin
 class AnimePaheProviderPlugin : Plugin() {
-    override fun load() {
+    override fun load(context: Context) {
         registerMainAPI(AnimePahe())
         registerExtractorAPI(Kwik())
         registerExtractorAPI(Pahe())

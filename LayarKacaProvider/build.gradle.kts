@@ -1,4 +1,4 @@
-version = 7
+version = 9
 
 cloudstream {
     language = "id"
@@ -13,7 +13,7 @@ cloudstream {
             "Movie",
         )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=lk21official.cc&sz=256"
+    iconUrl = "https://www.google.com/s2/favicons?domain=tv10.lk21official.cc&sz=256"
 
     isCrossPlatform = true
 }

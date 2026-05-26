@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 import org.jsoup.nodes.Element
 
 class Samehadaku : MainAPI() {
-    override var mainUrl = "https://v2.samehadaku.how"
+    override var mainUrl = DOMAIN
     override var name = "Samehadaku"
     override val hasMainPage = true
     override var lang = "id"
@@ -23,6 +23,18 @@ class Samehadaku : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
+        // Single point of domain rotation. Change here when the site moves.
+        const val DOMAIN = "https://v2.samehadaku.how"
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+
         fun getType(t: String): TvType = if (t.contains("OVA", true) || t.contains("Special", true)) {
             TvType.OVA
         } else if (t.contains("Movie", true)) {
@@ -64,6 +76,38 @@ class Samehadaku : MainAPI() {
             "$mainUrl/anime-year/2024/page/" to "Tahun 2024",
         )
 
+    /**
+     * Wraps app.get with up to [maxRetries] attempts and a small backoff.
+     * Centralizes timeout + headers; returns null instead of throwing to keep
+     * callsites null-safe.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): com.lagradost.nicehttp.NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return app.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    kotlinx.coroutines.delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("Samehadaku safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
@@ -71,8 +115,8 @@ class Samehadaku : MainAPI() {
         val items = mutableListOf<HomePageList>()
 
         if (request.name != "Episode Terbaru" && page <= 1) {
-            val doc = app.get(request.data).document
-            doc.select("div.widget_senction:not(:contains(Baca Komik))").forEach { block ->
+            val doc = safeGet(request.data)?.document
+            doc?.select("div.widget_senction:not(:contains(Baca Komik))")?.forEach { block ->
                 val header = block.selectFirst("div.widget-title h3")?.ownText() ?: return@forEach
                 val home = block.select("div.animepost").mapNotNull { it.toSearchResult() }
                 if (home.isNotEmpty()) items.add(HomePageList(header, home))
@@ -81,13 +125,12 @@ class Samehadaku : MainAPI() {
 
         if (request.name == "Episode Terbaru") {
             val home =
-                app
-                    .get(request.data + page)
-                    .document
-                    .selectFirst("div.post-show")
+                safeGet(request.data + page)
+                    ?.document
+                    ?.selectFirst("div.post-show")
                     ?.select("ul li")
                     ?.mapNotNull { it.toSearchResult() }
-                    ?: throw ErrorLoadingException("No Media Found")
+                    .orEmpty()
             items.add(HomePageList(request.name, home, true))
         }
 
@@ -118,8 +161,8 @@ class Samehadaku : MainAPI() {
                     "$mainUrl/page/$page/?s=$query"
                 }
             val pageResults =
-                runCatching { app.get(url).document }
-                    .getOrNull()
+                safeGet(url)
+                    ?.document
                     ?.select("main#main div.animepost")
                     ?.mapNotNull { it.toSearchResult() }
                     ?: emptyList()
@@ -135,14 +178,13 @@ class Samehadaku : MainAPI() {
             if (url.contains("/anime/")) {
                 url
             } else {
-                app
-                    .get(url)
-                    .document
-                    .selectFirst("div.nvs.nvsc a")
+                safeGet(url)
+                    ?.document
+                    ?.selectFirst("div.nvs.nvsc a")
                     ?.attr("href")
             }
 
-        val document = app.get(fixUrl ?: return null).document
+        val document = safeGet(fixUrl ?: return null)?.document ?: return null
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = document.selectFirst("div.thumb > img")?.attr("src")
         val tags = document.select("div.genre-info > a").map { it.text() }
@@ -215,11 +257,7 @@ class Samehadaku : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val ua =
-            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/124.0.0.0 Mobile Safari/537.36"
-        val baseHeaders = mapOf("User-Agent" to ua)
-        val document = app.get(data, referer = "$mainUrl/", headers = baseHeaders).document
+        val document = safeGet(data)?.document ?: return false
 
         runAllAsync(
             {

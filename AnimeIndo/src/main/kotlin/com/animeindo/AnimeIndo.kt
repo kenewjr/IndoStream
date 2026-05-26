@@ -13,13 +13,25 @@ import org.jsoup.nodes.Element
 import java.util.concurrent.atomic.AtomicInteger
 
 class AnimeIndo : MainAPI() {
-    override var mainUrl = "https://gomunime.top"
+    override var mainUrl = DOMAIN
     override var name = "AnimeIndo"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
+        // Single point of domain rotation. Update here when the site moves.
+        const val DOMAIN = "https://gomunime.top"
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+
         fun getType(t: String?): TvType {
             if (t == null) return TvType.Anime
             return when {
@@ -60,13 +72,44 @@ class AnimeIndo : MainAPI() {
             "$mainUrl/genre/supernatural" to "Genre: Supernatural",
         )
 
+    /**
+     * Wraps app.get with up to [maxRetries] attempts, uniform headers, and a 30s timeout.
+     * Returns null on exhaustion so callsites stay null-safe.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): com.lagradost.nicehttp.NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return app.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    kotlinx.coroutines.delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("AnimeIndo safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val url = if (page > 1) "${request.data}?page=$page" else request.data
         val document =
-            runCatching { app.get(url).document }.getOrNull()
+            safeGet(url)?.document
                 ?: return newHomePageResponse(request.name, emptyList())
 
         val home = document.select("a.card-netflix").mapNotNull { it.toSearchResult() }
@@ -99,15 +142,13 @@ class AnimeIndo : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document =
-            runCatching {
-                app.get("$mainUrl/search?q=${query.replace(" ", "+")}").document
-            }.getOrNull() ?: return emptyList()
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val document = safeGet("$mainUrl/search?q=$encoded")?.document ?: return emptyList()
         return document.select("a.card-netflix").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
+        val document = safeGet(url)?.document ?: return null
 
         val title =
             document
@@ -244,7 +285,7 @@ class AnimeIndo : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val document = runCatching { app.get(data).document }.getOrNull() ?: return false
+        val document = safeGet(data)?.document ?: return false
 
         val iframes =
             document

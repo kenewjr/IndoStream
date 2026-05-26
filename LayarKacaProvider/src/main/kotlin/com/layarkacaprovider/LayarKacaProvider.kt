@@ -9,9 +9,26 @@ import java.net.URI
 import java.util.concurrent.atomic.AtomicInteger
 
 class LayarKacaProvider : MainAPI() {
-    override var mainUrl = "https://tv10.lk21official.cc"
-    private var seriesUrl = "https://tv4.nontondrama.my"
-    private var searchurl = "https://gudangvape.com"
+    companion object {
+        // Single point of domain rotation. Update here when any host moves.
+        const val MAIN_DOMAIN = "https://tv10.lk21official.cc"
+        const val SERIES_DOMAIN = "https://tv4.nontondrama.my"
+        const val SEARCH_API = "https://gudangvape.com"
+        const val STATIC_POSTER = "https://static-jpg.lk21.party/wp-content/uploads/"
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+    }
+
+    override var mainUrl = MAIN_DOMAIN
+    private var seriesUrl = SERIES_DOMAIN
+    private var searchurl = SEARCH_API
 
     override var name = "LayarKaca"
     override val hasMainPage = true
@@ -33,11 +50,44 @@ class LayarKacaProvider : MainAPI() {
             "$mainUrl/latest/page/" to "Film Upload Terbaru",
         )
 
+    /**
+     * Wraps app.get with up to [maxRetries] attempts, uniform headers, and a 30s timeout.
+     * Returns null on exhaustion so callsites stay null-safe instead of throwing.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): com.lagradost.nicehttp.NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return app.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    kotlinx.coroutines.delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("LayarKaca safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val document = app.get(request.data + page).document
+        val document =
+            safeGet(request.data + page)?.document
+                ?: return newHomePageResponse(request.name, emptyList())
         val home =
             document.select("article figure").mapNotNull {
                 it.toSearchResult()
@@ -47,7 +97,7 @@ class LayarKacaProvider : MainAPI() {
 
     private suspend fun getProperLink(url: String): String {
         if (url.startsWith(seriesUrl)) return url
-        val res = app.get(url).document
+        val res = safeGet(url)?.document ?: return url
         return if (res.select("title").text().contains("Nontondrama", true)) {
             res.selectFirst("a#openNow")?.attr("href")
                 ?: res.selectFirst("div.links a")?.attr("href")
@@ -59,10 +109,10 @@ class LayarKacaProvider : MainAPI() {
 
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
-        val href = fixUrl(this.selectFirst("a")!!.attr("href"))
+        val href = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
-        val posterheaders = mapOf("Referer" to getBaseUrl(posterUrl))
+        val posterheaders = posterUrl?.let { mapOf("Referer" to getBaseUrl(it)) } ?: emptyMap()
         return if (type == TvType.TvSeries) {
             val episode =
                 this
@@ -86,75 +136,74 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val refer = app.get(mainUrl).url
-        val res = app.get("$searchurl/search.php?s=$query", referer = refer).text
+        val refer = safeGet(mainUrl)?.url ?: "$mainUrl/"
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val res = safeGet("$searchurl/search.php?s=$encoded", referer = refer)?.text
+            ?: return emptyList()
         val results = mutableListOf<SearchResponse>()
 
-        val root = JSONObject(res)
-        val arr = root.getJSONArray("data")
+        runCatching {
+            val root = JSONObject(res)
+            val arr = root.getJSONArray("data")
 
-        for (i in 0 until arr.length()) {
-            val item = arr.getJSONObject(i)
-            val title = item.getString("title")
-            val slug = item.getString("slug")
-            val type = item.getString("type")
-            val posterUrl = "https://static-jpg.lk21.party/wp-content/uploads/" + item.optString("poster")
-            when (type) {
-                "series" ->
-                    results.add(
-                        newTvSeriesSearchResponse(title, "$seriesUrl/$slug", TvType.TvSeries) {
-                            this.posterUrl = posterUrl
-                        },
-                    )
-                "movie" ->
-                    results.add(
-                        newMovieSearchResponse(title, "$mainUrl/$slug", TvType.Movie) {
-                            this.posterUrl = posterUrl
-                        },
-                    )
+            for (i in 0 until arr.length()) {
+                val item = arr.getJSONObject(i)
+                val title = item.optString("title").ifBlank { continue }
+                val slug = item.optString("slug").ifBlank { continue }
+                val type = item.optString("type")
+                val posterUrl = STATIC_POSTER + item.optString("poster")
+                when (type) {
+                    "series" ->
+                        results.add(
+                            newTvSeriesSearchResponse(title, "$seriesUrl/$slug", TvType.TvSeries) {
+                                this.posterUrl = posterUrl
+                            },
+                        )
+                    "movie" ->
+                        results.add(
+                            newMovieSearchResponse(title, "$mainUrl/$slug", TvType.Movie) {
+                                this.posterUrl = posterUrl
+                            },
+                        )
+                }
             }
-        }
+        }.onFailure { com.lagradost.cloudstream3.mvvm.logError(it) }
 
         return results
     }
 
     override suspend fun load(url: String): LoadResponse {
         val fixUrl = getProperLink(url)
-        val document = app.get(fixUrl).document
+        val document = safeGet(fixUrl)?.document
+            ?: throw ErrorLoadingException("LayarKaca page unreachable: $fixUrl")
         val baseurl = fetchURL(fixUrl)
         val title =
             document
                 .selectFirst("div.movie-info h1")
                 ?.text()
                 ?.trim()
-                .toString()
-        val poster = document.select("meta[property=og:image]").attr("content")
+                ?: url.substringAfterLast("/").replace("-", " ").trim().ifBlank { "Untitled" }
+        val poster = document.select("meta[property=og:image]").attr("content").ifBlank { null }
         val tags = document.select("div.tag-list span").map { it.text() }
-        val posterheaders = mapOf("Referer" to getBaseUrl(poster))
+        val posterheaders = poster?.let { mapOf("Referer" to getBaseUrl(it)) } ?: emptyMap()
 
         val year =
             Regex("\\d, (\\d+)")
                 .find(
                     document.select("div.movie-info h1").text().trim(),
                 )?.groupValues
-                ?.get(1)
-                .toString()
-                .toIntOrNull()
+                ?.getOrNull(1)
+                ?.toIntOrNull()
         val tvType = if (document.selectFirst("#season-data") != null) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div.meta-info")?.text()?.trim()
         val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
         val rating = document.selectFirst("div.info-tag strong")?.text()
 
         val recommendations =
-            document.select("li.slider article").map {
-                val recName =
-                    it
-                        .selectFirst("h3")
-                        ?.text()
-                        ?.trim()
-                        .toString()
-                val recHref = baseurl + it.selectFirst("a")!!.attr("href")
-                val recPosterUrl = fixUrl(it.selectFirst("img")?.attr("src").toString())
+            document.select("li.slider article").mapNotNull { rec ->
+                val recName = rec.selectFirst("h3")?.text()?.trim() ?: return@mapNotNull null
+                val recHref = baseurl + (rec.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
+                val recPosterUrl = fixUrlNull(rec.selectFirst("img")?.attr("src"))
                 newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
                     this.posterUrl = recPosterUrl
                     this.posterHeaders = posterheaders

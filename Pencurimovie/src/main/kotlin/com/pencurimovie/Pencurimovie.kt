@@ -8,7 +8,21 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
 class Pencurimovie : MainAPI() {
-    override var mainUrl = "https://ww11.pencurimovie.sbs"
+    companion object {
+        // Single point of domain rotation. Update here when the site moves.
+        const val DOMAIN = "https://ww11.pencurimovie.sbs"
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+    }
+
+    override var mainUrl = DOMAIN
     override var name = "Pencurimovie"
     override val hasMainPage = true
     override var lang = "id"
@@ -29,11 +43,47 @@ class Pencurimovie : MainAPI() {
             "country/china" to "China Movies",
         )
 
+    /**
+     * Wraps app.get with up to [maxRetries] attempts, uniform headers, and a 30s timeout.
+     * Returns null on exhaustion so callsites stay null-safe instead of throwing.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): com.lagradost.nicehttp.NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return app.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    kotlinx.coroutines.delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("Pencurimovie safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/page/$page", timeout = 50L).document
+        val document =
+            safeGet("$mainUrl/${request.data}/page/$page")?.document
+                ?: return newHomePageResponse(
+                    list = HomePageList(name = request.name, list = emptyList(), isHorizontalImages = false),
+                    hasNext = false,
+                )
         val home = document.select("div.ml-item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -54,13 +104,14 @@ class Pencurimovie : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl?s=$query", timeout = 50L).document
-        val results = document.select("div.ml-item").mapNotNull { it.toSearchResult() }
-        return results
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val document = safeGet("$mainUrl/?s=$encoded")?.document ?: return emptyList()
+        return document.select("div.ml-item").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, timeout = 50L).document
+        val document = safeGet(url)?.document
+            ?: throw ErrorLoadingException("Pencurimovie page unreachable: $url")
         val title =
             document
                 .selectFirst("div.mvic-desc h3")
@@ -147,7 +198,7 @@ class Pencurimovie : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val document = app.get(data, referer = "$mainUrl/").document
+        val document = safeGet(data)?.document ?: return false
         val iframes =
             document.select("div.movieplay iframe, div#mv-info iframe, iframe[src], iframe[data-src]")
                 .mapNotNull { el ->

@@ -1,4 +1,4 @@
-version = 27
+version = 28
 
 cloudstream {
     language = "id"
@@ -13,5 +13,5 @@ cloudstream {
             "Anime",
         )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=gomunime.top&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=gomunime.top&sz=256"
 }

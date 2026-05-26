@@ -20,13 +20,25 @@ class Nekopoi : MainAPI() {
     override var lang = "id"
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
-    private val fetch by lazy { Session(app.baseClient) }
+    private val fetch get() = session
     override val supportedTypes =
         setOf(
             TvType.NSFW,
         )
 
     companion object {
+        // Single point of domain rotation. Update here when the site moves.
+        const val DOMAIN = "https://nekopoi.care"
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+
         val session: Session by lazy { Session(app.baseClient) }
         val mirrorBlackList =
             arrayOf(
@@ -75,12 +87,48 @@ class Nekopoi : MainAPI() {
             "$mainUrl/genres/uncensored/" to "Genre: Uncensored",
         )
 
+    /**
+     * Wraps `fetch.get` (the cookie-preserving Session) with up to [maxRetries] attempts
+     * and a small backoff. Returns null on exhaustion so callsites stay null-safe.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return fetch.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("Nekopoi safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val base = request.data.trimEnd('/')
-        val document = fetch.get("$base/page/$page/").document
+        val document =
+            safeGet("$base/page/$page/")?.document
+                ?: return newHomePageResponse(
+                    list = HomePageList(name = request.name, list = emptyList(), isHorizontalImages = false),
+                    hasNext = false,
+                )
         val searchItems =
             document
                 .select("div.nk-search-results ul li")
@@ -289,17 +337,13 @@ class Nekopoi : MainAPI() {
             } else {
                 "$mainUrl/?s=$encoded&post_type=anime"
             }
-        return fetch
-            .get(target)
-            .document
-            .let { doc ->
-                doc
-                    .select("div.nk-search-results ul li")
-                    .ifEmpty {
-                        doc.select("div.nk-search-results li")
-                    }.ifEmpty {
-                        doc.select("div.result-list a[href], div.nk-result-list a[href], section.hasil a[href]")
-                    }
+        val doc = safeGet(target)?.document ?: return emptyList()
+        return doc
+            .select("div.nk-search-results ul li")
+            .ifEmpty {
+                doc.select("div.nk-search-results li")
+            }.ifEmpty {
+                doc.select("div.result-list a[href], div.nk-result-list a[href], section.hasil a[href]")
             }.mapNotNull { it.toSearchResult() }
     }
 
@@ -325,7 +369,8 @@ class Nekopoi : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = fetch.get(url).document
+        val document = safeGet(url)?.document
+            ?: throw ErrorLoadingException("Nekopoi page unreachable: $url")
 
         val title =
             document.selectFirst("div.nk-post-header h1")?.text()?.trim()
@@ -678,7 +723,7 @@ class Nekopoi : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val res = fetch.get(data).document
+        val res = safeGet(data)?.document ?: return false
 
         runAllAsync(
             {

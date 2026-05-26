@@ -41,7 +41,22 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.Normalizer
 
 class IdlixProvider : MainAPI() {
-    override var mainUrl = base64Decode("aHR0cHM6Ly96MS5pZGxpeGt1LmNvbQ==")
+    companion object {
+        // Single point of domain rotation. Update here when the API host moves.
+        // base64 = "https://z1.idlixku.com"
+        val DOMAIN: String = base64Decode("aHR0cHM6Ly96MS5pZGxpeGt1LmNvbQ==")
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "application/json,text/html,application/xhtml+xml,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+    }
+
+    override var mainUrl = DOMAIN
     override var name = "Idlix"
     override val hasMainPage = true
     override var lang = "id"
@@ -65,12 +80,44 @@ class IdlixProvider : MainAPI() {
             "$mainUrl/api/browse?page=%d&limit=36&sort=latest&network=netflix" to "Netflix",
         )
 
+    /**
+     * Wraps app.get with up to [maxRetries] attempts, uniform headers, and a 30s timeout.
+     * Returns null on exhaustion so callsites stay null-safe.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): com.lagradost.nicehttp.NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return app.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("Idlix safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val url = if (request.data.contains("%d")) request.data.format(page) else request.data
-        val res = app.get(url, timeout = 10000L).parsedSafe<ApiResponse>() ?: return newHomePageResponse(request.name, emptyList())
+        val res = safeGet(url)?.parsedSafe<ApiResponse>()
+            ?: return newHomePageResponse(request.name, emptyList())
         val home =
             res.data.map { item ->
                 val title = item.title ?: "UnKnown"
@@ -103,8 +150,9 @@ class IdlixProvider : MainAPI() {
         query: String,
         page: Int,
     ): SearchResponseList? {
-        val url = "$mainUrl/api/search?q=$query&page=$page&limit=8"
-        val res = app.get(url).parsedSafe<SearchApiResponse>() ?: return null
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val url = "$mainUrl/api/search?q=$encoded&page=$page&limit=8"
+        val res = safeGet(url)?.parsedSafe<SearchApiResponse>() ?: return null
         val items = res.results
         val results =
             items.mapNotNull { item ->
@@ -141,7 +189,8 @@ class IdlixProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val response = app.get(url, timeout = 10000L)
+        val response = safeGet(url)
+            ?: throw ErrorLoadingException("Idlix API unreachable: $url")
 
         val data =
             response.parsedSafe<DetailResponse>()
@@ -182,9 +231,8 @@ class IdlixProvider : MainAPI() {
 
         val recommendations =
             try {
-                app
-                    .get(relatedUrl, referer = mainUrl)
-                    .parsedSafe<ApiResponse>()
+                safeGet(relatedUrl, referer = mainUrl)
+                    ?.parsedSafe<ApiResponse>()
                     ?.data
                     ?.mapNotNull { item ->
 
@@ -250,8 +298,8 @@ class IdlixProvider : MainAPI() {
 
                 val seasonData =
                     try {
-                        val res = app.get(seasonUrl, referer = mainUrl)
-                        res.parsedSafe<SeasonWrapper>()?.season
+                        safeGet(seasonUrl, referer = mainUrl)
+                            ?.parsedSafe<SeasonWrapper>()?.season
                     } catch (_: Exception) {
                         null
                     }
@@ -342,10 +390,10 @@ class IdlixProvider : MainAPI() {
             )
 
         val playResponse =
-            app.get(
+            safeGet(
                 "$mainUrl/api/watch/play-info/$contentType/$contentId",
-                headers = headers,
-            )
+                referer = "$mainUrl/",
+            ) ?: return false
 
         val cookies = playResponse.cookies
         val playInfo = playResponse.parsedSafe<Res>() ?: return false

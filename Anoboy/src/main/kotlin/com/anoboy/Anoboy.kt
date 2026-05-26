@@ -6,7 +6,7 @@ import org.jsoup.nodes.Element
 import java.util.concurrent.atomic.AtomicInteger
 
 class Anoboy : MainAPI() {
-    override var mainUrl = "https://anoboy.my.id"
+    override var mainUrl = DOMAIN
     override var name = "Anoboy"
     override val hasMainPage = true
     override var lang = "id"
@@ -21,6 +21,21 @@ class Anoboy : MainAPI() {
         )
 
     companion object {
+        // Single point of domain rotation. Change here when the site moves.
+        const val DOMAIN = "https://anoboy.my.id"
+
+        // Default embed shell host used when the page's `xd=` token is missing or unparseable.
+        const val EMBED_FALLBACK = "https://ww1.anoboy.boo"
+
+        val baseHeaders =
+            mapOf(
+                "User-Agent" to
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            )
+
         fun getType(t: String): TvType = if (t.contains("OVA", true) || t.contains("Special", true)) {
             TvType.OVA
         } else if (t.contains("Movie", true)) {
@@ -45,14 +60,44 @@ class Anoboy : MainAPI() {
             "$mainUrl/live-action/page/" to "Live Action",
         )
 
+    /**
+     * Wraps app.get with up to [maxRetries] attempts, uniform headers, and a 30s timeout.
+     * Returns null instead of throwing so callsites stay null-safe.
+     */
+    private suspend fun safeGet(
+        url: String,
+        referer: String? = "$mainUrl/",
+        maxRetries: Int = 3,
+    ): com.lagradost.nicehttp.NiceResponse? {
+        var lastError: Throwable? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return app.get(
+                    url,
+                    referer = referer,
+                    headers = baseHeaders,
+                    timeout = 30L,
+                )
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt < maxRetries - 1) {
+                    kotlinx.coroutines.delay(700L * (attempt + 1))
+                }
+            }
+        }
+        com.lagradost.cloudstream3.mvvm.logError(
+            (lastError ?: Exception("Anoboy safeGet failed: $url")),
+        )
+        return null
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val document =
-            runCatching {
-                app.get("${request.data}$page/").document
-            }.getOrNull() ?: return newHomePageResponse(request.name, emptyList())
+            safeGet("${request.data}$page/")?.document
+                ?: return newHomePageResponse(request.name, emptyList())
 
         val home = document.select("div.xrelated").mapNotNull { it.toSearchResponse() }
         return newHomePageResponse(request.name, home)
@@ -87,10 +132,9 @@ class Anoboy : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
         val document =
-            runCatching {
-                app.get("$mainUrl/?s=${query.replace(" ", "+")}").document
-            }.getOrNull() ?: return emptyList()
+            safeGet("$mainUrl/?s=$encoded")?.document ?: return emptyList()
         return document.select("div.xrelated").mapNotNull { it.toSearchResponse() }
     }
 
@@ -170,12 +214,7 @@ class Anoboy : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         return try {
-            val ua =
-                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                    "Chrome/124.0.0.0 Mobile Safari/537.36"
-            val baseHeaders = mapOf("User-Agent" to ua)
-            val document =
-                app.get(data, referer = "$mainUrl/", headers = baseHeaders).document
+            val document = safeGet(data)?.document ?: return false
 
             val embedHostRegex = Regex("""xd\s*=\s*['"]([A-Za-z0-9+/=]+)['"]""")
             val embedHost: String =
@@ -190,7 +229,7 @@ class Anoboy : MainAPI() {
                                 .trimEnd('/')
                         }.getOrNull()
                     }
-                    ?: "https://ww1.anoboy.boo"
+                    ?: EMBED_FALLBACK
 
             fun resolve(raw: String): String? {
                 val u = raw.trim().ifBlank { return null }
@@ -224,11 +263,10 @@ class Anoboy : MainAPI() {
                     if (src.contains("/uploads/adsbatch", ignoreCase = true) ||
                         src.contains("/uploads/yup/", ignoreCase = true)
                     ) {
-                        val innerDoc =
-                            app.get(src, referer = data, headers = baseHeaders).document
+                        val innerDoc = safeGet(src, referer = data)?.document
                         val realIframe =
-                            innerDoc.selectFirst("iframe[src]")?.attr("src")
-                                ?: innerDoc.selectFirst("iframe[data-src]")?.attr("data-src")
+                            innerDoc?.selectFirst("iframe[src]")?.attr("src")
+                                ?: innerDoc?.selectFirst("iframe[data-src]")?.attr("data-src")
                         if (!realIframe.isNullOrBlank()) {
                             val resolved = resolve(realIframe) ?: realIframe
                             registerWithFallback(resolved, src, subtitleCallback, callback)
@@ -241,6 +279,7 @@ class Anoboy : MainAPI() {
 
             true
         } catch (e: Exception) {
+            com.lagradost.cloudstream3.mvvm.logError(e)
             false
         }
     }
