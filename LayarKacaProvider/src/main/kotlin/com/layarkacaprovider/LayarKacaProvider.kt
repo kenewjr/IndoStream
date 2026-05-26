@@ -213,20 +213,59 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val resolvedCount = AtomicInteger(0)
-        runCatching {
-            loadExtractor(data, "$mainUrl/", subtitleCallback) { link ->
-                resolvedCount.incrementAndGet()
-                callback.invoke(link)
-            }
-        }
-        if (resolvedCount.get() == 0) {
+        val ua =
+            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/124.0.0.0 Mobile Safari/537.36"
+        val headers = mapOf("User-Agent" to ua)
+        val pageDoc = app.get(data, referer = "$mainUrl/", headers = headers).document
+
+        val iframes =
+            pageDoc.select(
+                "div.embed-container iframe, div.player iframe, div#player iframe, " +
+                    "iframe[src], iframe[data-src], iframe[data-litespeed-src]",
+            ).mapNotNull { el ->
+                (
+                    el.attr("data-src").takeIf { it.isNotBlank() }
+                        ?: el.attr("data-litespeed-src").takeIf { it.isNotBlank() }
+                        ?: el.attr("src").takeIf { it.isNotBlank() }
+                    )
+            }.map { raw ->
+                when {
+                    raw.startsWith("http") -> raw
+                    raw.startsWith("//") -> "https:$raw"
+                    else -> "$mainUrl$raw"
+                }
+            }.distinct()
+
+        if (iframes.isEmpty()) {
+            // last-ditch: try the page url itself as a passthrough
             callback.invoke(
                 newExtractorLink(name, name, data) {
                     this.referer = "$mainUrl/"
                     this.quality = Qualities.Unknown.value
                 },
             )
+            return true
+        }
+
+        iframes.amap { src ->
+            val resolvedCount = AtomicInteger(0)
+            runCatching {
+                loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
+                    resolvedCount.incrementAndGet()
+                    callback.invoke(link)
+                }
+            }
+            if (resolvedCount.get() == 0) {
+                val host = runCatching { URI(src).host }
+                    .getOrNull()?.removePrefix("www.") ?: name
+                callback.invoke(
+                    newExtractorLink(host, host, src) {
+                        this.referer = "$mainUrl/"
+                        this.quality = Qualities.Unknown.value
+                    },
+                )
+            }
         }
         return true
     }

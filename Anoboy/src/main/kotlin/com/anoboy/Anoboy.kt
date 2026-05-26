@@ -170,7 +170,12 @@ class Anoboy : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         return try {
-            val document = app.get(data, referer = "$mainUrl/").document
+            val ua =
+                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/124.0.0.0 Mobile Safari/537.36"
+            val baseHeaders = mapOf("User-Agent" to ua)
+            val document =
+                app.get(data, referer = "$mainUrl/", headers = baseHeaders).document
 
             val embedHostRegex = Regex("""xd\s*=\s*['"]([A-Za-z0-9+/=]+)['"]""")
             val embedHost: String =
@@ -219,7 +224,8 @@ class Anoboy : MainAPI() {
                     if (src.contains("/uploads/adsbatch", ignoreCase = true) ||
                         src.contains("/uploads/yup/", ignoreCase = true)
                     ) {
-                        val innerDoc = app.get(src, referer = data).document
+                        val innerDoc =
+                            app.get(src, referer = data, headers = baseHeaders).document
                         val realIframe =
                             innerDoc.selectFirst("iframe[src]")?.attr("src")
                                 ?: innerDoc.selectFirst("iframe[data-src]")?.attr("data-src")

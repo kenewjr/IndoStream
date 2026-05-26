@@ -27,7 +27,7 @@ class Nekopoi : MainAPI() {
         )
 
     companion object {
-        val session = Session(Requests().baseClient)
+        val session: Session by lazy { Session(app.baseClient) }
         val mirrorBlackList =
             arrayOf(
                 "MegaupNet",

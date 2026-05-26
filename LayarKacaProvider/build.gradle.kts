@@ -13,7 +13,7 @@ cloudstream {
             "Movie",
         )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=tv7.lk21.am.in&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=lk21official.cc&sz=256"
 
     isCrossPlatform = true
 }

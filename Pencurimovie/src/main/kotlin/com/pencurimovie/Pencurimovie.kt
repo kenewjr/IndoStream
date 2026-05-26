@@ -147,10 +147,42 @@ class Pencurimovie : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val document = app.get(data).document
-        document.select("div.movieplay iframe").forEach {
-            val href = it.attr("data-src")
-            loadExtractor(href, subtitleCallback, callback)
+        val document = app.get(data, referer = "$mainUrl/").document
+        val iframes =
+            document.select("div.movieplay iframe, div#mv-info iframe, iframe[src], iframe[data-src]")
+                .mapNotNull { el ->
+                    (el.attr("data-src").takeIf { it.isNotBlank() }
+                        ?: el.attr("src").takeIf { it.isNotBlank() })
+                }
+                .map { raw ->
+                    when {
+                        raw.startsWith("http") -> raw
+                        raw.startsWith("//") -> "https:$raw"
+                        else -> "$mainUrl$raw"
+                    }
+                }
+                .distinct()
+
+        if (iframes.isEmpty()) return false
+
+        iframes.amap { src ->
+            val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+            runCatching {
+                loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
+                    resolvedCount.incrementAndGet()
+                    callback.invoke(link)
+                }
+            }
+            if (resolvedCount.get() == 0) {
+                val host = runCatching { java.net.URI(src).host }
+                    .getOrNull()?.removePrefix("www.") ?: name
+                callback.invoke(
+                    newExtractorLink(host, host, src) {
+                        this.referer = "$mainUrl/"
+                        this.quality = Qualities.Unknown.value
+                    },
+                )
+            }
         }
         return true
     }

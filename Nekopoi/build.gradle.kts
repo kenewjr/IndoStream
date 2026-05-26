@@ -14,5 +14,5 @@ cloudstream {
             "NSFW",
         )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=nekopoi.care&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=nekopoi.care&sz=256"
 }

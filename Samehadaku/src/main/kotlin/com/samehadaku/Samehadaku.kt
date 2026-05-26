@@ -215,7 +215,11 @@ class Samehadaku : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val document = app.get(data).document
+        val ua =
+            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/124.0.0.0 Mobile Safari/537.36"
+        val baseHeaders = mapOf("User-Agent" to ua)
+        val document = app.get(data, referer = "$mainUrl/", headers = baseHeaders).document
 
         runAllAsync(
             {
@@ -243,7 +247,21 @@ class Samehadaku : MainAPI() {
                                 src.startsWith("//") -> "https:$src"
                                 else -> "$mainUrl$src"
                             }
-                        loadExtractor(resolved, "$mainUrl/", subtitleCallback, callback)
+                        val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+                        loadExtractor(resolved, "$mainUrl/", subtitleCallback) { link ->
+                            resolvedCount.incrementAndGet()
+                            callback.invoke(link)
+                        }
+                        if (resolvedCount.get() == 0) {
+                            val host = runCatching { java.net.URI(resolved).host }
+                                .getOrNull()?.removePrefix("www.") ?: name
+                            callback.invoke(
+                                newExtractorLink(host, host, resolved) {
+                                    this.referer = "$mainUrl/"
+                                    this.quality = Qualities.Unknown.value
+                                },
+                            )
+                        }
                     }
                 }
             },
