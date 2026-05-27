@@ -32,10 +32,6 @@ class Nekopoi : MainAPI() {
 
         val baseHeaders =
             mapOf(
-                "User-Agent" to
-                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                    "Chrome/124.0.0.0 Mobile Safari/537.36",
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
             )
 
