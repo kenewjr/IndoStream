@@ -1,11 +1,8 @@
-version = 14
+version = 15
 
 cloudstream {
     language = "id"
-    description = "Nekopoi.care provider — hentai, JAV, 3D, dan cosplay sub Indo. " +
-        "Dukungan smart-search dengan prefix (tag:, jav:, hentai:, uncensored:, dst.), " +
-        "rekomendasi otomatis, thumbnail per-episode."
-
+    description = "Nekopoi.care provider — hentai, JAV, 3D, dan cosplay sub Indo. "
     authors = listOf("kenewjr")
 
     status = 1

@@ -8,6 +8,6 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class NekopoiPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Nekopoi())
-        registerExtractorAPI(ZippyShare())
+        registerExtractorAPI(Filemoon())
     }
 }
