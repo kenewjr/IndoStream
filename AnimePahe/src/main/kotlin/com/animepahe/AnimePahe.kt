@@ -29,7 +29,7 @@ class AnimePahe : MainAPI() {
         }
     }
 
-    override var mainUrl = AnimePaheProviderPlugin.currentAnimepaheServer
+    override var mainUrl: String = ServerList.BEST.link.first
     override var name = "AnimePahe"
     override val hasQuickSearch = false
     override val hasMainPage = true

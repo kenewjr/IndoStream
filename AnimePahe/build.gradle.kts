@@ -1,23 +1,14 @@
-version = 22
+version = 24
 
 android {
-
     namespace = "com.animepahe"
-    buildFeatures {
-        buildConfig = true
-        viewBinding = true
-    }
-}
-
-dependencies {
-    implementation("com.google.android.material:material:1.13.0")
 }
 
 cloudstream {
     language = "en"
 
     description = "Animes (SUB/DUB)"
-    authors = listOf("kenewjr")
+    authors = listOf("phisher98")
 
     status = 1
     tvTypes =
@@ -27,7 +18,4 @@ cloudstream {
             "OVA",
         )
     iconUrl = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animepahe.png"
-
-    requiresResources = true
-    isCrossPlatform = false
 }
