@@ -263,25 +263,66 @@ class LayarKacaProvider : MainAPI() {
             "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/124.0.0.0 Mobile Safari/537.36"
         val headers = mapOf("User-Agent" to ua)
-        val pageDoc = app.get(data, referer = "$mainUrl/", headers = headers).document
 
-        val iframes =
+        // LK21 template puts the actual player on /play. Detail page often
+        // has no iframe; try /play first, fall back to detail page.
+        val playUrl = if (data.endsWith("/play")) data else "${data.trimEnd('/')}/play"
+
+        suspend fun fetchDoc(url: String) =
+            runCatching { app.get(url, referer = "$mainUrl/", headers = headers).document }
+                .getOrNull()
+
+        val playDoc = fetchDoc(playUrl)
+        val pageDoc = playDoc ?: fetchDoc(data) ?: return false
+
+        fun resolveSrc(raw: String): String? {
+            val s = raw.trim().ifBlank { return null }
+            return when {
+                s.startsWith("http") -> s
+                s.startsWith("//") -> "https:$s"
+                s.startsWith("/") -> "$mainUrl$s"
+                else -> "$mainUrl/$s"
+            }
+        }
+
+        // Pattern A: direct iframe[src]
+        val iframeSources =
             pageDoc.select(
                 "div.embed-container iframe, div.player iframe, div#player iframe, " +
                     "iframe[src], iframe[data-src], iframe[data-litespeed-src]",
             ).mapNotNull { el ->
-                (
-                    el.attr("data-src").takeIf { it.isNotBlank() }
-                        ?: el.attr("data-litespeed-src").takeIf { it.isNotBlank() }
-                        ?: el.attr("src").takeIf { it.isNotBlank() }
-                    )
-            }.map { raw ->
-                when {
-                    raw.startsWith("http") -> raw
-                    raw.startsWith("//") -> "https:$raw"
-                    else -> "$mainUrl$raw"
+                val raw = el.attr("data-src").takeIf { it.isNotBlank() }
+                    ?: el.attr("data-litespeed-src").takeIf { it.isNotBlank() }
+                    ?: el.attr("src").takeIf { it.isNotBlank() }
+                raw?.let { resolveSrc(it) }
+            }
+
+        // Pattern B: LK21/IndoXXi base64 data-iframe in server-list
+        val base64Sources =
+            pageDoc.select("div#server-list div[data-iframe], div.server-list div[data-iframe], div[data-iframe]")
+                .mapNotNull { el ->
+                    runCatching {
+                        val raw = el.attr("data-iframe").trim().ifBlank { return@runCatching null }
+                        val decoded = String(android.util.Base64.decode(raw, android.util.Base64.DEFAULT))
+                        resolveSrc(decoded.trim())
+                    }.getOrNull()
                 }
-            }.distinct()
+
+        // Pattern C: muvipro/Anoboy-style anchor with data-video
+        val anchorSources =
+            pageDoc.select(
+                ".muvipro_player_content_list a[data-video], .vmiror a[data-video], a[data-video]",
+            ).mapNotNull { a ->
+                a.attr("data-video").takeIf { it.isNotBlank() }?.let { resolveSrc(it) }
+            }
+
+        val iframes = (iframeSources + base64Sources + anchorSources)
+            .filterNot { src ->
+                // Skip placeholder pages similar to Anoboy fix
+                src.contains("loading.html", ignoreCase = true) ||
+                    src.contains("about:blank", ignoreCase = true)
+            }
+            .distinct()
 
         if (iframes.isEmpty()) {
             // last-ditch: try the page url itself as a passthrough
