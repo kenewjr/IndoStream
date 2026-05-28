@@ -40,12 +40,21 @@ internal val backgroundImageRegex =
 
 internal val nekopoiMainPage: List<MainPageData> =
     mainPageOf(
+        // ===== Latest =====
         "$DOMAIN/" to "Terbaru",
+        // ===== Popular & Trending =====
+        // ?orderby=views = WordPress Post Views Counter plugin (popular).
+        // ?orderby=comment_count = built-in WordPress (trending = most discussed).
+        // If the plugin isn't installed, Popular falls back to default ordering.
+        "$DOMAIN/?orderby=views&order=desc" to "Popular",
+        "$DOMAIN/?orderby=comment_count&order=desc" to "Trending",
+        // ===== Categories =====
         "$DOMAIN/category/hentai/" to "Hentai",
         "$DOMAIN/category/jav/" to "JAV",
         "$DOMAIN/category/3d-hentai/" to "3D Hentai",
         "$DOMAIN/category/2d-animation/" to "2D Animation",
         "$DOMAIN/category/jav-cosplay/" to "JAV Cosplay",
+        // ===== Genres =====
         "$DOMAIN/genres/big-oppai/" to "Genre: Big Oppai",
         "$DOMAIN/genres/schoolgirl/" to "Genre: Schoolgirl",
         "$DOMAIN/genres/vanilla/" to "Genre: Vanilla",
