@@ -3,15 +3,15 @@ package com.nekopoi
 
 import android.util.Log
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.runAllAsync
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.nicehttp.NiceResponse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -75,9 +75,19 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                         }
                     fixEmbed(normalized)
                 }.distinct()
-                .amap { src ->
-                    Log.d("Nekopoi", "resolveStreamLinks: iframe extractor src=$src")
-                    loadExtractor(src, "$mainUrl/", subtitleCallback, countingCallback)
+                .let { srcList ->
+                    // Was .amap (ParCollectionsKt — Kototoro stripped). Replaced with
+                    // explicit per-element launch inside a child coroutineScope.
+                    coroutineScope {
+                        srcList.forEach { src ->
+                            launch {
+                                runCatching {
+                                    Log.d("Nekopoi", "resolveStreamLinks: iframe extractor src=$src")
+                                    loadExtractor(src, "$mainUrl/", subtitleCallback, countingCallback)
+                                }.onFailure { Log.e("Nekopoi", "loadExtractor failed for $src", it) }
+                            }
+                        }
+                    }
                 }
             }.onFailure { Log.e("Nekopoi", "iframe extraction block failed", it) }
         }
@@ -193,7 +203,10 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                             listOf(destinationUrl)
                         }
 
-                    fileLinks.amap ads@{ adsLink ->
+                    coroutineScope {
+                        fileLinks.forEach ads@{ adsLink ->
+                            launch ads@{
+                                runCatching {
                         try {
                             val pixelMatch =
                                 Regex("pixeldrain\\.com/u/([\\w-]+)")
@@ -244,6 +257,9 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                             }
                         } catch (e: Exception) {
                             Log.e("Nekopoi", "resolveStreamLinks: ouo/embed pipeline error", e)
+                        }
+                                }.onFailure { Log.e("Nekopoi", "ads pipeline failed", it) }
+                            }
                         }
                     }
                 }
@@ -328,18 +344,29 @@ internal suspend fun bypassMirrored(url: String?): List<String?> {
         .select("table.hoverable tbody tr")
         .filter { mirror ->
             !mirrorIsBlackList(mirror.selectFirst("img")?.attr("alt"))
-        }.amap {
-            val fileLink = it.selectFirst("a")?.attr("href")
-            app
-                .get(
-                    fixUrl(
-                        fileLink ?: return@amap null,
-                        mirroredHost,
-                    ),
-                    headers = baseHeaders,
-                ).document
-                .selectFirst("div.code_wrap code")
-                ?.text()
+        }.let { rows ->
+            // Was .amap (ParCollectionsKt — Kototoro stripped). Use map{async}.awaitAll
+            // to preserve return values + concurrency.
+            coroutineScope {
+                rows
+                    .map { row ->
+                        async {
+                            runCatching {
+                                val fileLink = row.selectFirst("a")?.attr("href")
+                                app
+                                    .get(
+                                        fixUrl(
+                                            fileLink ?: return@runCatching null,
+                                            mirroredHost,
+                                        ),
+                                        headers = baseHeaders,
+                                    ).document
+                                    .selectFirst("div.code_wrap code")
+                                    ?.text()
+                            }.getOrNull()
+                        }
+                    }.awaitAll()
+            }
         }
 }
 
