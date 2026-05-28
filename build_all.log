@@ -1,0 +1,105 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: compileDebugKotlin
+> Task :Anoboy:preBuild UP-TO-DATE
+> Task :Dubbindo:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :AnimePahe:preBuild UP-TO-DATE
+> Task :AnimePahe:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Anoboy:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :AnimeIndo:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Dubbindo:preBuild UP-TO-DATE
+> Task :AnimeIndo:preBuild UP-TO-DATE
+> Task :AnimeIndo:preDebugBuild UP-TO-DATE
+> Task :IdlixProvider:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :IdlixProvider:preBuild UP-TO-DATE
+> Task :LayarKacaProvider:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :IdlixProvider:preDebugBuild UP-TO-DATE
+> Task :LayarKacaProvider:preBuild UP-TO-DATE
+> Task :Dubbindo:preDebugBuild UP-TO-DATE
+> Task :Nekopoi:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Nekopoi:preBuild UP-TO-DATE
+> Task :AnimePahe:preDebugBuild UP-TO-DATE
+> Task :Nekopoi:preDebugBuild UP-TO-DATE
+> Task :LayarKacaProvider:preDebugBuild UP-TO-DATE
+> Task :Anoboy:preDebugBuild UP-TO-DATE
+> Task :Pencurimovie:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Pencurimovie:preBuild UP-TO-DATE
+> Task :Pencurimovie:preDebugBuild UP-TO-DATE
+> Task :Nekopoi:generateDebugResValues UP-TO-DATE
+> Task :Dubbindo:generateDebugResValues UP-TO-DATE
+> Task :Pencurimovie:generateDebugResValues UP-TO-DATE
+> Task :LayarKacaProvider:generateDebugResValues UP-TO-DATE
+> Task :AnimeIndo:generateDebugResValues UP-TO-DATE
+> Task :Anoboy:generateDebugResValues UP-TO-DATE
+> Task :IdlixProvider:generateDebugResValues UP-TO-DATE
+> Task :AnimePahe:generateDebugResValues UP-TO-DATE
+> Task :Nekopoi:generateDebugResources UP-TO-DATE
+> Task :IdlixProvider:generateDebugResources UP-TO-DATE
+> Task :LayarKacaProvider:generateDebugResources UP-TO-DATE
+> Task :AnimePahe:generateDebugResources UP-TO-DATE
+> Task :Pencurimovie:generateDebugResources UP-TO-DATE
+> Task :AnimeIndo:generateDebugResources UP-TO-DATE
+> Task :Dubbindo:generateDebugResources UP-TO-DATE
+> Task :Anoboy:generateDebugResources UP-TO-DATE
+> Task :Rebahin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Rebahin:preBuild UP-TO-DATE
+> Task :Rebahin:preDebugBuild UP-TO-DATE
+> Task :Rebahin:generateDebugResValues UP-TO-DATE
+> Task :Rebahin:generateDebugResources UP-TO-DATE
+> Task :Samehadaku:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Samehadaku:preBuild UP-TO-DATE
+> Task :Samehadaku:preDebugBuild UP-TO-DATE
+> Task :Samehadaku:generateDebugResValues UP-TO-DATE
+> Task :Nekopoi:packageDebugResources UP-TO-DATE
+> Task :Samehadaku:generateDebugResources UP-TO-DATE
+> Task :LayarKacaProvider:packageDebugResources UP-TO-DATE
+> Task :IdlixProvider:packageDebugResources UP-TO-DATE
+> Task :Anoboy:packageDebugResources UP-TO-DATE
+> Task :AnimePahe:packageDebugResources UP-TO-DATE
+> Task :Pencurimovie:packageDebugResources UP-TO-DATE
+> Task :Dubbindo:packageDebugResources UP-TO-DATE
+> Task :IdlixProvider:parseDebugLocalResources UP-TO-DATE
+> Task :Anoboy:parseDebugLocalResources UP-TO-DATE
+> Task :LayarKacaProvider:parseDebugLocalResources UP-TO-DATE
+> Task :Nekopoi:parseDebugLocalResources UP-TO-DATE
+> Task :Pencurimovie:parseDebugLocalResources UP-TO-DATE
+> Task :AnimePahe:parseDebugLocalResources UP-TO-DATE
+> Task :Nekopoi:generateDebugRFile UP-TO-DATE
+> Task :Dubbindo:parseDebugLocalResources UP-TO-DATE
+> Task :LayarKacaProvider:generateDebugRFile UP-TO-DATE
+> Task :Pencurimovie:generateDebugRFile UP-TO-DATE
+> Task :AnimeIndo:packageDebugResources UP-TO-DATE
+> Task :IdlixProvider:generateDebugRFile UP-TO-DATE
+> Task :Anoboy:generateDebugRFile UP-TO-DATE
+> Task :AnimeIndo:parseDebugLocalResources UP-TO-DATE
+> Task :AnimeIndo:generateDebugRFile UP-TO-DATE
+> Task :AnimePahe:generateDebugRFile UP-TO-DATE
+> Task :Dubbindo:generateDebugRFile UP-TO-DATE
+> Task :Pencurimovie:compileDebugKotlin UP-TO-DATE
+> Task :LayarKacaProvider:compileDebugKotlin UP-TO-DATE
+> Task :AnimeIndo:compileDebugKotlin UP-TO-DATE
+> Task :IdlixProvider:compileDebugKotlin UP-TO-DATE
+> Task :Dubbindo:compileDebugKotlin UP-TO-DATE
+> Task :Anoboy:compileDebugKotlin UP-TO-DATE
+> Task :Nekopoi:compileDebugKotlin UP-TO-DATE
+> Task :AnimePahe:compileDebugKotlin UP-TO-DATE
+> Task :Samehadaku:packageDebugResources UP-TO-DATE
+> Task :Rebahin:packageDebugResources UP-TO-DATE
+> Task :Samehadaku:parseDebugLocalResources UP-TO-DATE
+> Task :Rebahin:parseDebugLocalResources UP-TO-DATE
+> Task :Samehadaku:generateDebugRFile UP-TO-DATE
+> Task :Rebahin:generateDebugRFile UP-TO-DATE
+> Task :Samehadaku:compileDebugKotlin UP-TO-DATE
+> Task :Rebahin:compileDebugKotlin UP-TO-DATE
+
+[Incubating] Problems report is available at: file:///D:/project/IndoStream/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 11s
+60 actionable tasks: 60 up-to-date
+Configuration cache entry stored.
