@@ -1,6 +1,7 @@
 // NekopoiLoadParser.kt - Detail page parsing: title, poster, info block, episodes, recommendations.
 package com.nekopoi
 
+import android.util.Log
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.LoadResponse
@@ -22,8 +23,13 @@ private val metadataPrefixes =
     )
 
 internal suspend fun Nekopoi.parseLoadPage(url: String): LoadResponse {
+    Log.d("Nekopoi", "parseLoadPage: url=$url")
     val document = safeGet(url)?.document
-        ?: throw ErrorLoadingException("Nekopoi page unreachable: $url")
+        ?: run {
+            Log.e("Nekopoi", "parseLoadPage: safeGet returned null for $url")
+            throw ErrorLoadingException("Nekopoi page unreachable: $url")
+        }
+    Log.d("Nekopoi", "parseLoadPage: page fetched, body length=${document.text().length}")
 
     val title =
         document.selectFirst("div.nk-post-header h1")?.text()?.trim()
@@ -210,6 +216,7 @@ internal suspend fun Nekopoi.parseLoadPage(url: String): LoadResponse {
                 ?.takeIf { it.isNotBlank() }
 
     val episodes = parseEpisodes(document, url, title)
+    Log.d("Nekopoi", "parseLoadPage: title='$title' episodes.size=${episodes.size}")
     val recommendations = parseRecommendations(document, title, poster)
 
     return newAnimeLoadResponse(title, url, TvType.NSFW) {
@@ -313,9 +320,17 @@ private fun MainAPI.parseEpisodes(
             emptyList()
         }
 
+    Log.d(
+        "Nekopoi",
+        "parseEpisodes: cards=${episodesFromCards.size} daftar=${episodesFromDaftarSection.size}",
+    )
     return episodesFromCards
         .ifEmpty { episodesFromDaftarSection }
-        .takeIf { it.isNotEmpty() } ?: listOf(newEpisode(url) { this.name = title })
+        .takeIf { it.isNotEmpty() }
+        ?: run {
+            Log.w("Nekopoi", "parseEpisodes: no episodes parsed, falling back to single self-link for $url")
+            listOf(newEpisode(url) { this.name = title })
+        }
 }
 
 private fun MainAPI.parseRecommendations(
