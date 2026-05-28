@@ -303,7 +303,7 @@ class LayarKacaProvider : MainAPI() {
                 .mapNotNull { el ->
                     runCatching {
                         val raw = el.attr("data-iframe").trim().ifBlank { return@runCatching null }
-                        val decoded = String(android.util.Base64.decode(raw, android.util.Base64.DEFAULT))
+                        val decoded = String(java.util.Base64.getDecoder().decode(raw))
                         resolveSrc(decoded.trim())
                     }.getOrNull()
                 }
