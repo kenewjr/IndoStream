@@ -1,4 +1,3 @@
-// NekopoiStreamHandler.kt - Video stream resolution: iframe extraction, ouo.io and mirrored.to bypass.
 package com.nekopoi
 
 import android.util.Log
@@ -30,7 +29,6 @@ internal suspend fun Nekopoi.resolveStreamLinks(
     }
     Log.d("Nekopoi", "resolveStreamLinks: page fetched, ${res.text().length} chars")
 
-    // Wrap callback to count successful registrations.
     val linkCount = AtomicInteger(0)
     val countingCallback: (ExtractorLink) -> Unit = { link ->
         linkCount.incrementAndGet()
@@ -38,16 +36,11 @@ internal suspend fun Nekopoi.resolveStreamLinks(
         callback(link)
     }
 
-    // Replaced runAllAsync (Kototoro R8-stripped CloudStream helper) with pure
-    // kotlinx.coroutines primitives. coroutineScope waits for all child launches.
     coroutineScope {
         launch {
             runCatching {
             res
                 .select(
-                    // FIXED: BUG5 - added filemoon/streamtape/doodstream/mp4upload host
-                    // selectors and a generic data-src fallback so we still detect embeds when
-                    // the wrapper div class changes.
                     "#nk-player div.nk-player-frame iframe[src], " +
                         "div.nk-player-frame iframe[src], " +
                         "#nk-stream-1 iframe, #nk-stream-2 iframe, #nk-stream-3 iframe, " +
@@ -76,8 +69,6 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                     fixEmbed(normalized)
                 }.distinct()
                 .let { srcList ->
-                    // Was .amap (ParCollectionsKt — Kototoro stripped). Replaced with
-                    // explicit per-element launch inside a child coroutineScope.
                     coroutineScope {
                         srcList.forEach { src ->
                             launch {
@@ -272,12 +263,6 @@ internal suspend fun Nekopoi.resolveStreamLinks(
     return total > 0
 }
 
-// FIXED: BUG4 - removed APIHolder.getCaptchaToken() (requires UI interaction,
-// silently returns null under Kototoro's headless plugin runtime). New flow:
-//   1. Follow redirects directly via app.get with a real UA + Referer.
-//   2. If we land off ouo.io, return that final URL.
-//   3. Otherwise submit the form WITHOUT the x-token captcha field and read
-//      the Location header from the no-redirect response.
 internal suspend fun bypassOuo(url: String?): String? {
     if (url == null) return null
     return try {
@@ -323,8 +308,6 @@ private fun NiceResponse.selectMirror(): String? = this.document
     ?.substringAfter("\"GET\", \"")
     ?.substringBefore("\"")
 
-// FIXED: BUG1 (followup) - bypassMirrored also routed through session.
-// Switching to app.get to keep the same Kototoro-safe path.
 internal suspend fun bypassMirrored(url: String?): List<String?> {
     val request = app.get(url ?: return emptyList(), headers = baseHeaders)
     delay(2000)
@@ -345,8 +328,6 @@ internal suspend fun bypassMirrored(url: String?): List<String?> {
         .filter { mirror ->
             !mirrorIsBlackList(mirror.selectFirst("img")?.attr("alt"))
         }.let { rows ->
-            // Was .amap (ParCollectionsKt — Kototoro stripped). Use map{async}.awaitAll
-            // to preserve return values + concurrency.
             coroutineScope {
                 rows
                     .map { row ->

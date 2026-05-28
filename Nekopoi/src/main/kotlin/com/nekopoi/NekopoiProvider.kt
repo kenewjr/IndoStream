@@ -1,5 +1,3 @@
-// NekopoiProvider.kt - Main CloudStream provider class. Thin orchestrator that delegates
-// parsing to NekopoiSearchParser, NekopoiLoadParser, and NekopoiStreamHandler.
 package com.nekopoi
 
 import com.lagradost.cloudstream3.HomePageList
@@ -28,18 +26,6 @@ class Nekopoi : MainAPI() {
 
     override val mainPage = nekopoiMainPage
 
-    /**
-     * Wraps `app.get` with up to [maxRetries] attempts and small backoff.
-     * FIXED: BUG1 - direct app.get path (was session.get) so requests succeed under
-     * Kototoro's plugin classloader. Marked `internal` so extension files can call it.
-     *
-     * v18 hardening for Kototoro:
-     *   - Logs the full exception class + message so logcat reveals the real failure
-     *     instead of only a partial System.err stack fragment.
-     *   - On exhaustion of the headered path, retries once with plain `app.get(url)`
-     *     (no headers, no referer). Some Kototoro builds reject overridden headers,
-     *     and the plain call succeeds where the headered one fails.
-     */
     internal suspend fun safeGet(
         url: String,
         referer: String? = "$mainUrl/",
@@ -66,8 +52,6 @@ class Nekopoi : MainAPI() {
             }
         }
 
-        // Fallback: try the plain call (no custom headers, no referer).
-        // If this succeeds, the headers map was the blocker under Kototoro.
         try {
             android.util.Log.w("Nekopoi", "safeGet falling back to plain app.get for $url")
             val plain = app.get(url)

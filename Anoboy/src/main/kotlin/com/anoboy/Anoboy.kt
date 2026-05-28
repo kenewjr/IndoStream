@@ -2,6 +2,8 @@ package com.anoboy
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.jsoup.nodes.Element
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -40,11 +42,14 @@ class Anoboy : MainAPI() {
             TvType.Anime
         }
 
-        fun getStatus(t: String): ShowStatus = when (t) {
-            "Completed" -> ShowStatus.Completed
-            "Ongoing" -> ShowStatus.Ongoing
-            else -> ShowStatus.Completed
-        }
+        // Kototoro R8 may strip enum values; runCatching + nullable return guards.
+        fun getStatus(t: String): ShowStatus? = runCatching {
+            when (t) {
+                "Completed" -> ShowStatus.Completed
+                "Ongoing" -> ShowStatus.Ongoing
+                else -> null
+            }
+        }.getOrNull()
     }
 
     override val mainPage =
@@ -72,7 +77,6 @@ class Anoboy : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -254,21 +258,25 @@ class Anoboy : MainAPI() {
             val allSources = (iframeSources + mirrorSources).distinct()
             if (allSources.isEmpty()) return false
 
-            allSources.amap { src ->
-                runCatching {
-                    if (src.contains("/uploads/adsbatch", ignoreCase = true) ||
-                        src.contains("/uploads/yup/", ignoreCase = true)
-                    ) {
-                        val innerDoc = safeGet(src, referer = data)?.document
-                        val realIframe =
-                            innerDoc?.selectFirst("iframe[src]")?.attr("src")
-                                ?: innerDoc?.selectFirst("iframe[data-src]")?.attr("data-src")
-                        if (!realIframe.isNullOrBlank()) {
-                            val resolved = resolve(realIframe) ?: realIframe
-                            registerWithFallback(resolved, src, subtitleCallback, callback)
+            coroutineScope {
+                allSources.forEach { src ->
+                    launch {
+                        runCatching {
+                            if (src.contains("/uploads/adsbatch", ignoreCase = true) ||
+                                src.contains("/uploads/yup/", ignoreCase = true)
+                            ) {
+                                val innerDoc = safeGet(src, referer = data)?.document
+                                val realIframe =
+                                    innerDoc?.selectFirst("iframe[src]")?.attr("src")
+                                        ?: innerDoc?.selectFirst("iframe[data-src]")?.attr("data-src")
+                                if (!realIframe.isNullOrBlank()) {
+                                    val resolved = resolve(realIframe) ?: realIframe
+                                    registerWithFallback(resolved, src, subtitleCallback, callback)
+                                }
+                            } else {
+                                registerWithFallback(src, "$mainUrl/", subtitleCallback, callback)
+                            }
                         }
-                    } else {
-                        registerWithFallback(src, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
             }

@@ -92,7 +92,6 @@ class IdlixProvider : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t

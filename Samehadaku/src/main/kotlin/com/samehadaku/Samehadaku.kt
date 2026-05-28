@@ -39,11 +39,14 @@ class Samehadaku : MainAPI() {
             TvType.Anime
         }
 
-        fun getStatus(t: String): ShowStatus = when (t) {
-            "Completed" -> ShowStatus.Completed
-            "Ongoing" -> ShowStatus.Ongoing
-            else -> ShowStatus.Completed
-        }
+        // Kototoro R8 may strip enum values; runCatching + nullable return guards.
+        fun getStatus(t: String): ShowStatus? = runCatching {
+            when (t) {
+                "Completed" -> ShowStatus.Completed
+                "Ongoing" -> ShowStatus.Ongoing
+                else -> null
+            }
+        }.getOrNull()
     }
 
     override val mainPage =
@@ -89,7 +92,6 @@ class Samehadaku : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -237,7 +239,8 @@ class Samehadaku : MainAPI() {
             this.year = year
             addEpisodes(DubStatus.Subbed, episodes)
             showStatus = status
-            addScore(rating)
+            // addScore is on LoadResponse.Companion; Kototoro's R8 may strip it.
+            runCatching { addScore(rating) }
             plot = description
             addTrailer(trailer)
             this.tags = tags
@@ -255,64 +258,79 @@ class Samehadaku : MainAPI() {
     ): Boolean {
         val document = safeGet(data)?.document ?: return false
 
-        runAllAsync(
-            {
-                val iframeSrcs =
-                    document
-                        .select(
-                            "div.player-embed iframe, " +
-                                "div#pembed iframe, " +
-                                "div.iframe-server iframe, " +
-                                "div.responsive-embed-container iframe, " +
-                                "main iframe[src]",
-                        ).mapNotNull {
-                            (
-                                it.attr("src").takeIf { s -> s.isNotBlank() }
-                                    ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
-                                    ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() }
-                                )
-                        }.distinct()
+        // Replaced runAllAsync (Kototoro R8 strips it) with explicit coroutineScope+launch.
+        coroutineScope {
+            launch {
+                runCatching {
+                    val iframeSrcs =
+                        document
+                            .select(
+                                "div.player-embed iframe, " +
+                                    "div#pembed iframe, " +
+                                    "div.iframe-server iframe, " +
+                                    "div.responsive-embed-container iframe, " +
+                                    "main iframe[src]",
+                            ).mapNotNull {
+                                (
+                                    it.attr("src").takeIf { s -> s.isNotBlank() }
+                                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
+                                        ?: it.attr("data-litespeed-src").takeIf { s -> s.isNotBlank() }
+                                    )
+                            }.distinct()
 
-                iframeSrcs.amap { src ->
-                    runCatching {
-                        val resolved =
-                            when {
-                                src.startsWith("http") -> src
-                                src.startsWith("//") -> "https:$src"
-                                else -> "$mainUrl$src"
+                    coroutineScope {
+                        iframeSrcs.forEach { src ->
+                            launch {
+                                runCatching {
+                                    val resolved =
+                                        when {
+                                            src.startsWith("http") -> src
+                                            src.startsWith("//") -> "https:$src"
+                                            else -> "$mainUrl$src"
+                                        }
+                                    val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+                                    loadExtractor(resolved, "$mainUrl/", subtitleCallback) { link ->
+                                        resolvedCount.incrementAndGet()
+                                        callback.invoke(link)
+                                    }
+                                    if (resolvedCount.get() == 0) {
+                                        val host = runCatching { java.net.URI(resolved).host }
+                                            .getOrNull()?.removePrefix("www.") ?: name
+                                        callback.invoke(
+                                            newExtractorLink(host, host, resolved) {
+                                                this.referer = "$mainUrl/"
+                                                this.quality = Qualities.Unknown.value
+                                            },
+                                        )
+                                    }
+                                }
                             }
-                        val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
-                        loadExtractor(resolved, "$mainUrl/", subtitleCallback) { link ->
-                            resolvedCount.incrementAndGet()
-                            callback.invoke(link)
-                        }
-                        if (resolvedCount.get() == 0) {
-                            val host = runCatching { java.net.URI(resolved).host }
-                                .getOrNull()?.removePrefix("www.") ?: name
-                            callback.invoke(
-                                newExtractorLink(host, host, resolved) {
-                                    this.referer = "$mainUrl/"
-                                    this.quality = Qualities.Unknown.value
-                                },
-                            )
                         }
                     }
-                }
-            },
-            {
-                document.select("div#downloadb li").map { el ->
-                    el.select("a").amap {
-                        loadFixedExtractor(
-                            fixUrl(it.attr("href")),
-                            el.select("strong").text(),
-                            "$mainUrl/",
-                            subtitleCallback,
-                            callback,
-                        )
+                }.onFailure { android.util.Log.e("Samehadaku", "iframe block failed", it) }
+            }
+            launch {
+                runCatching {
+                    coroutineScope {
+                        document.select("div#downloadb li").forEach { el ->
+                            el.select("a").forEach { a ->
+                                launch {
+                                    runCatching {
+                                        loadFixedExtractor(
+                                            fixUrl(a.attr("href")),
+                                            el.select("strong").text(),
+                                            "$mainUrl/",
+                                            subtitleCallback,
+                                            callback,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
-            },
-        )
+                }.onFailure { android.util.Log.e("Samehadaku", "download block failed", it) }
+            }
+        }
 
         return true
     }

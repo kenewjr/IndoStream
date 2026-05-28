@@ -3,6 +3,8 @@ package com.layarkacaprovider
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -62,7 +64,6 @@ class LayarKacaProvider : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -293,23 +294,27 @@ class LayarKacaProvider : MainAPI() {
             return true
         }
 
-        iframes.amap { src ->
-            val resolvedCount = AtomicInteger(0)
-            runCatching {
-                loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
-                    resolvedCount.incrementAndGet()
-                    callback.invoke(link)
+        coroutineScope {
+            iframes.forEach { src ->
+                launch {
+                    val resolvedCount = AtomicInteger(0)
+                    runCatching {
+                        loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
+                            resolvedCount.incrementAndGet()
+                            callback.invoke(link)
+                        }
+                    }
+                    if (resolvedCount.get() == 0) {
+                        val host = runCatching { URI(src).host }
+                            .getOrNull()?.removePrefix("www.") ?: name
+                        callback.invoke(
+                            newExtractorLink(host, host, src) {
+                                this.referer = "$mainUrl/"
+                                this.quality = Qualities.Unknown.value
+                            },
+                        )
+                    }
                 }
-            }
-            if (resolvedCount.get() == 0) {
-                val host = runCatching { URI(src).host }
-                    .getOrNull()?.removePrefix("www.") ?: name
-                callback.invoke(
-                    newExtractorLink(host, host, src) {
-                        this.referer = "$mainUrl/"
-                        this.quality = Qualities.Unknown.value
-                    },
-                )
             }
         }
         return true

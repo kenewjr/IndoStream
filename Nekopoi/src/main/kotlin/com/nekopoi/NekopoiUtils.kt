@@ -1,4 +1,3 @@
-// NekopoiUtils.kt - Shared URL, text, and embed helper functions.
 package com.nekopoi
 
 import java.net.URI

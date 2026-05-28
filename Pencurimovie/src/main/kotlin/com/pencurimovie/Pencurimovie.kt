@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.jsoup.nodes.Element
 
 class Pencurimovie : MainAPI() {
@@ -55,7 +57,6 @@ class Pencurimovie : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -131,7 +132,10 @@ class Pencurimovie : MainAPI() {
         val recommendation = document.select("div.ml-item").mapNotNull { it.toSearchResult() }
         return if (tvtag == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
-            document.select("div.tvseason").amap { info ->
+            // Replaced .amap (Kototoro R8 strips ParCollectionsKt). Body only does
+            // sync DOM parsing and was racing on mutableListOf; plain forEach is
+            // both correct and faster here.
+            document.select("div.tvseason").forEach { info ->
                 val season =
                     info
                         .select("strong")
@@ -212,23 +216,27 @@ class Pencurimovie : MainAPI() {
 
         if (iframes.isEmpty()) return false
 
-        iframes.amap { src ->
-            val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
-            runCatching {
-                loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
-                    resolvedCount.incrementAndGet()
-                    callback.invoke(link)
+        coroutineScope {
+            iframes.forEach { src ->
+                launch {
+                    val resolvedCount = java.util.concurrent.atomic.AtomicInteger(0)
+                    runCatching {
+                        loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
+                            resolvedCount.incrementAndGet()
+                            callback.invoke(link)
+                        }
+                    }
+                    if (resolvedCount.get() == 0) {
+                        val host = runCatching { java.net.URI(src).host }
+                            .getOrNull()?.removePrefix("www.") ?: name
+                        callback.invoke(
+                            newExtractorLink(host, host, src) {
+                                this.referer = "$mainUrl/"
+                                this.quality = Qualities.Unknown.value
+                            },
+                        )
+                    }
                 }
-            }
-            if (resolvedCount.get() == 0) {
-                val host = runCatching { java.net.URI(src).host }
-                    .getOrNull()?.removePrefix("www.") ?: name
-                callback.invoke(
-                    newExtractorLink(host, host, src) {
-                        this.referer = "$mainUrl/"
-                        this.quality = Qualities.Unknown.value
-                    },
-                )
             }
         }
         return true

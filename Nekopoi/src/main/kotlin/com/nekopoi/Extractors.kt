@@ -10,8 +10,6 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
-// FIXED: BUG3 - ZippyShare permanently shut down in 2023.  Replaced with Filemoon
-// which is the host nekopoi.care now uses for the iframe player.
 open class Filemoon : ExtractorApi() {
     override val name = "Filemoon"
     override val mainUrl = "https://filemoon.sx"
@@ -65,15 +63,11 @@ open class Filemoon : ExtractorApi() {
     }
 }
 
-// FIXED: nekopoi.care now embeds video through playmogo.com clones (Filemoon family).
-// Same packer + sources pattern, just a different hostname — so we inherit getUrl
-// and only override the host the extractor matches against.
 class Playmogo : Filemoon() {
     override val name = "Playmogo"
     override val mainUrl = "https://playmogo.com"
 }
 
-// FIXED: streampoi.com is the secondary embed wrapper nekopoi.care now uses.
 class Streampoi : Filemoon() {
     override val name = "Streampoi"
     override val mainUrl = "https://streampoi.com"

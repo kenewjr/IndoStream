@@ -9,6 +9,8 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.jsoup.nodes.Element
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -38,16 +40,17 @@ class AnimeIndo : MainAPI() {
             }
         }
 
-        fun getStatus(t: String?): ShowStatus {
-            if (t == null) return ShowStatus.Completed
-            return when {
+        // Kototoro R8 may strip enum values; runCatching + nullable return guards.
+        fun getStatus(t: String?): ShowStatus? = runCatching {
+            if (t == null) return@runCatching null
+            when {
                 t.contains("Ongoing", true) || t.contains("Currently", true) ->
                     ShowStatus.Ongoing
                 t.contains("Completed", true) || t.contains("Finished", true) ->
                     ShowStatus.Completed
-                else -> ShowStatus.Completed
+                else -> null
             }
-        }
+        }.getOrNull()
     }
 
     override val mainPage =
@@ -84,7 +87,6 @@ class AnimeIndo : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -264,7 +266,8 @@ class AnimeIndo : MainAPI() {
             backgroundPosterUrl = tracker?.cover
             this.year = year
             this.duration = duration
-            score?.let { addScore(it) }
+            // addScore is an extension on LoadResponse.Companion; Kototoro's R8 may strip it.
+            score?.let { runCatching { addScore(it) } }
             addEpisodes(DubStatus.Subbed, episodes)
             showStatus = status
             plot = description
@@ -291,47 +294,51 @@ class AnimeIndo : MainAPI() {
 
         if (iframes.isEmpty()) return false
 
-        iframes.amap { rawSrc ->
-            val src = httpsify(rawSrc)
-            runCatching {
-                when {
-                    src.contains("pixeldrain.com", ignoreCase = true) -> {
-                        val id =
-                            Regex("pixeldrain\\.com/u/([\\w-]+)")
-                                .find(src)
-                                ?.groupValues
-                                ?.get(1)
-                        if (id != null) {
-                            callback.invoke(
-                                newExtractorLink(
-                                    "Pixeldrain",
-                                    "Pixeldrain",
-                                    "https://pixeldrain.com/api/file/$id?download",
-                                ) {
-                                    this.referer = "$mainUrl/"
-                                    this.quality = Qualities.Unknown.value
-                                },
-                            )
-                        }
-                    }
+        coroutineScope {
+            iframes.forEach { rawSrc ->
+                launch {
+                    val src = httpsify(rawSrc)
+                    runCatching {
+                        when {
+                            src.contains("pixeldrain.com", ignoreCase = true) -> {
+                                val id =
+                                    Regex("pixeldrain\\.com/u/([\\w-]+)")
+                                        .find(src)
+                                        ?.groupValues
+                                        ?.get(1)
+                                if (id != null) {
+                                    callback.invoke(
+                                        newExtractorLink(
+                                            "Pixeldrain",
+                                            "Pixeldrain",
+                                            "https://pixeldrain.com/api/file/$id?download",
+                                        ) {
+                                            this.referer = "$mainUrl/"
+                                            this.quality = Qualities.Unknown.value
+                                        },
+                                    )
+                                }
+                            }
 
-                    else -> {
-                        val resolvedCount = AtomicInteger(0)
-                        loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
-                            resolvedCount.incrementAndGet()
-                            callback.invoke(link)
-                        }
-                        if (resolvedCount.get() == 0) {
-                            val host =
-                                runCatching { java.net.URI(src).host }
-                                    .getOrNull()
-                                    ?.removePrefix("www.") ?: "Embed"
-                            callback.invoke(
-                                newExtractorLink(host, host, src) {
-                                    this.referer = "$mainUrl/"
-                                    this.quality = Qualities.Unknown.value
-                                },
-                            )
+                            else -> {
+                                val resolvedCount = AtomicInteger(0)
+                                loadExtractor(src, "$mainUrl/", subtitleCallback) { link ->
+                                    resolvedCount.incrementAndGet()
+                                    callback.invoke(link)
+                                }
+                                if (resolvedCount.get() == 0) {
+                                    val host =
+                                        runCatching { java.net.URI(src).host }
+                                            .getOrNull()
+                                            ?.removePrefix("www.") ?: "Embed"
+                                    callback.invoke(
+                                        newExtractorLink(host, host, src) {
+                                            this.referer = "$mainUrl/"
+                                            this.quality = Qualities.Unknown.value
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }

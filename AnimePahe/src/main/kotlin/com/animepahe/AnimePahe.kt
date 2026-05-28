@@ -412,26 +412,32 @@ class AnimePahe : MainAPI() {
                 }
             }
 
-        document.select("div#pickDownload > a").amap {
-            val qualityRegex = Regex("""(.+?)\s+·\s+(\d{3,4}p)""")
-            val href = it.attr("href")
-            var type = "SUB"
-            if (it.select("span").text().contains("eng")) {
-                type = "DUB"
-            }
-            val text = it.text()
-            val match = qualityRegex.find(text)
-            val source = match?.groupValues?.getOrNull(1) ?: "Unknown"
-            val quality = match?.groupValues?.getOrNull(2)?.substringBefore("p") ?: "Unknown"
+        coroutineScope {
+            document.select("div#pickDownload > a").forEach { it ->
+                launch {
+                    runCatching {
+                        val qualityRegex = Regex("""(.+?)\s+·\s+(\d{3,4}p)""")
+                        val href = it.attr("href")
+                        var type = "SUB"
+                        if (it.select("span").text().contains("eng")) {
+                            type = "DUB"
+                        }
+                        val text = it.text()
+                        val match = qualityRegex.find(text)
+                        val source = match?.groupValues?.getOrNull(1) ?: "Unknown"
+                        val quality = match?.groupValues?.getOrNull(2)?.substringBefore("p") ?: "Unknown"
 
-            loadCustomExtractor(
-                "Animepahe Pahe $source [$type]",
-                href,
-                "",
-                subtitleCallback,
-                callback,
-                quality.toIntOrNull(),
-            )
+                        loadCustomExtractor(
+                            "Animepahe Pahe $source [$type]",
+                            href,
+                            "",
+                            subtitleCallback,
+                            callback,
+                            quality.toIntOrNull(),
+                        )
+                    }.onFailure { Log.e("AnimePahe", "loadLinks pick failed: $it") }
+                }
+            }
         }
         return true
     }

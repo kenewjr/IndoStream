@@ -1,4 +1,3 @@
-// NekopoiConstants.kt - Static config, headers, blacklists, and lookup tables.
 package com.nekopoi
 
 import com.lagradost.cloudstream3.MainPageData
@@ -7,10 +6,10 @@ import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 
-// Single point of domain rotation. Update here when the site moves.
+
 internal const val DOMAIN = "https://nekopoi.care"
 
-// FIXED: BUG2 - explicit UA + Accept + Connection so nekopoi.care/ouo.io/mirrored.to don't 403.
+
 internal val baseHeaders =
     mapOf(
         "User-Agent" to
@@ -40,21 +39,13 @@ internal val backgroundImageRegex =
 
 internal val nekopoiMainPage: List<MainPageData> =
     mainPageOf(
-        // ===== Latest =====
-        "$DOMAIN/" to "Terbaru",
-        // ===== Popular & Trending =====
-        // ?orderby=views = WordPress Post Views Counter plugin (popular).
-        // ?orderby=comment_count = built-in WordPress (trending = most discussed).
-        // If the plugin isn't installed, Popular falls back to default ordering.
-        "$DOMAIN/?orderby=views&order=desc" to "Popular",
-        "$DOMAIN/?orderby=comment_count&order=desc" to "Trending",
-        // ===== Categories =====
-        "$DOMAIN/category/hentai/" to "Hentai",
-        "$DOMAIN/category/jav/" to "JAV",
-        "$DOMAIN/category/3d-hentai/" to "3D Hentai",
-        "$DOMAIN/category/2d-animation/" to "2D Animation",
-        "$DOMAIN/category/jav-cosplay/" to "JAV Cosplay",
-        // ===== Genres =====
+        "$DOMAIN/" to "🆕 Terbaru",
+        "$DOMAIN/?orderby=terbaru" to "🎲 Terbaru",
+        "$DOMAIN/category/hentai/" to "🔞 Hentai",
+        "$DOMAIN/category/jav/" to "📺 JAV",
+        "$DOMAIN/category/3d-hentai/" to "🎭 3D Hentai",
+        "$DOMAIN/category/2d-animation/" to "🎨 2D Animation",
+        "$DOMAIN/category/jav-cosplay/" to "👘 JAV Cosplay",
         "$DOMAIN/genres/big-oppai/" to "Genre: Big Oppai",
         "$DOMAIN/genres/schoolgirl/" to "Genre: Schoolgirl",
         "$DOMAIN/genres/vanilla/" to "Genre: Vanilla",

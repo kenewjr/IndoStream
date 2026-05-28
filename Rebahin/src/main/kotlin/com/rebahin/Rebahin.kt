@@ -9,6 +9,10 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.jsoup.nodes.Element
 import java.net.URI
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,7 +53,6 @@ open class Rebahin : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -84,15 +87,21 @@ open class Rebahin : MainAPI() {
 
         // Fan out all 12 tab fetches concurrently. Was previously a serial for-loop
         // which made first paint take 12× longer than necessary.
+        // Was urls.amap (Kototoro R8 strips ParCollectionsKt). Use map{async}.awaitAll
+        // to preserve return values + concurrency.
         val items =
-            urls.amap { (header, tab) ->
-                val home =
-                    safeGet("$mainUrl/wp-content/themes/indoxxi/ajax-top-$tab.php")
-                        ?.document
-                        ?.select("div.ml-item")
-                        ?.mapNotNull { it.toSearchResult() }
-                        .orEmpty()
-                if (home.isNotEmpty()) HomePageList(header, home) else null
+            coroutineScope {
+                urls.map { (header, tab) ->
+                    async {
+                        val home =
+                            safeGet("$mainUrl/wp-content/themes/indoxxi/ajax-top-$tab.php")
+                                ?.document
+                                ?.select("div.ml-item")
+                                ?.mapNotNull { it.toSearchResult() }
+                                .orEmpty()
+                        if (home.isNotEmpty()) HomePageList(header, home) else null
+                    }
+                }.awaitAll()
             }.filterNotNull()
 
         if (items.isEmpty()) throw ErrorLoadingException()
@@ -195,7 +204,7 @@ open class Rebahin : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                addScore(rating)
+                runCatching { addScore(rating) }
                 this.duration = duration
                 addActors(actors)
                 addTrailer(trailer)
@@ -213,7 +222,7 @@ open class Rebahin : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                addScore(rating)
+                runCatching { addScore(rating) }
                 this.duration = duration
                 addActors(actors)
                 addTrailer(trailer)
@@ -227,29 +236,33 @@ open class Rebahin : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        data.removeSurrounding("[", "]").split(",").map { it.trim() }.amap { link ->
-            safeApiCall {
-                when {
-                    link.startsWith(mainServer) ->
-                        invokeLokalSource(link, subtitleCallback, callback)
-                    else -> {
-                        val resolvedCount = AtomicInteger(0)
-                        val ref = directUrl?.let { "$it/" } ?: "$mainServer/"
-                        loadExtractor(link, ref, subtitleCallback) { ext ->
-                            resolvedCount.incrementAndGet()
-                            callback.invoke(ext)
-                        }
-                        if (resolvedCount.get() == 0) {
-                            val host =
-                                runCatching { URI(link).host }
-                                    .getOrNull()
-                                    ?.removePrefix("www.") ?: "Embed"
-                            callback.invoke(
-                                newExtractorLink(host, host, link) {
-                                    this.referer = ref
-                                    this.quality = Qualities.Unknown.value
-                                },
-                            )
+        coroutineScope {
+            data.removeSurrounding("[", "]").split(",").map { it.trim() }.forEach { link ->
+                launch {
+                    safeApiCall {
+                        when {
+                            link.startsWith(mainServer) ->
+                                invokeLokalSource(link, subtitleCallback, callback)
+                            else -> {
+                                val resolvedCount = AtomicInteger(0)
+                                val ref = directUrl?.let { "$it/" } ?: "$mainServer/"
+                                loadExtractor(link, ref, subtitleCallback) { ext ->
+                                    resolvedCount.incrementAndGet()
+                                    callback.invoke(ext)
+                                }
+                                if (resolvedCount.get() == 0) {
+                                    val host =
+                                        runCatching { URI(link).host }
+                                            .getOrNull()
+                                            ?.removePrefix("www.") ?: "Embed"
+                                    callback.invoke(
+                                        newExtractorLink(host, host, link) {
+                                            this.referer = ref
+                                            this.quality = Qualities.Unknown.value
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -272,7 +285,6 @@ open class Rebahin : MainAPI() {
                     referer = directUrl,
                     headers = baseHeaders + mapOf("Accept" to
                         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"),
-                    timeout = 30L,
                 ).document
             }.getOrNull() ?: return
 

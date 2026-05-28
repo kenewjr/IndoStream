@@ -1,5 +1,3 @@
-// NekopoiSearchParser.kt - MainAPI extension parsers for homepage and search results.
-// Receivers are MainAPI so newAnimeSearchResponse / fixUrlNull (themselves MainAPI extensions) resolve.
 package com.nekopoi
 
 import com.lagradost.cloudstream3.AnimeSearchResponse
