@@ -32,6 +32,13 @@ class Nekopoi : MainAPI() {
      * Wraps `app.get` with up to [maxRetries] attempts and small backoff.
      * FIXED: BUG1 - direct app.get path (was session.get) so requests succeed under
      * Kototoro's plugin classloader. Marked `internal` so extension files can call it.
+     *
+     * v18 hardening for Kototoro:
+     *   - Logs the full exception class + message so logcat reveals the real failure
+     *     instead of only a partial System.err stack fragment.
+     *   - On exhaustion of the headered path, retries once with plain `app.get(url)`
+     *     (no headers, no referer). Some Kototoro builds reject overridden headers,
+     *     and the plain call succeeds where the headered one fails.
      */
     internal suspend fun safeGet(
         url: String,
@@ -49,11 +56,36 @@ class Nekopoi : MainAPI() {
                 )
             } catch (t: Throwable) {
                 lastError = t
+                android.util.Log.e(
+                    "Nekopoi",
+                    "safeGet headered attempt ${attempt + 1}/$maxRetries failed for $url: " +
+                        "${t.javaClass.simpleName}: ${t.message}",
+                )
                 if (attempt < maxRetries - 1) {
                     delay(700L * (attempt + 1))
                 }
             }
         }
+
+        // Fallback: try the plain call (no custom headers, no referer).
+        // If this succeeds, the headers map was the blocker under Kototoro.
+        try {
+            android.util.Log.w("Nekopoi", "safeGet falling back to plain app.get for $url")
+            val plain = app.get(url, timeout = 30L)
+            android.util.Log.d(
+                "Nekopoi",
+                "safeGet plain fallback SUCCEEDED for $url (status=${plain.code})",
+            )
+            return plain
+        } catch (t: Throwable) {
+            android.util.Log.e(
+                "Nekopoi",
+                "safeGet plain fallback also failed for $url: " +
+                    "${t.javaClass.simpleName}: ${t.message}",
+                t,
+            )
+        }
+
         logError(lastError ?: Exception("Nekopoi safeGet failed: $url"))
         return null
     }
