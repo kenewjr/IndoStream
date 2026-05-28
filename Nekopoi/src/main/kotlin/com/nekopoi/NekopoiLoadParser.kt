@@ -229,7 +229,10 @@ internal suspend fun Nekopoi.parseLoadPage(url: String): LoadResponse {
         plot = description
         this.tags = tags
         this.recommendations = recommendations
-        addScore(score)
+        // addScore is an extension on LoadResponse.Companion; Kototoro's R8 build can
+        // strip it if not referenced from the host app. Skip silently on failure
+        // since score is optional metadata.
+        runCatching { addScore(score) }
     }
 }
 
