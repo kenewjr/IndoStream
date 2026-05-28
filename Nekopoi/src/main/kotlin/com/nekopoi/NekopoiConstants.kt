@@ -63,12 +63,14 @@ internal val nekopoiMainPage: List<MainPageData> =
         "$DOMAIN/genres/uncensored/" to "Genre: Uncensored",
     )
 
-internal fun getStatus(t: String?): ShowStatus =
+
+internal fun getStatus(t: String?): ShowStatus? = runCatching {
     when (t) {
         "Completed" -> ShowStatus.Completed
         "Ongoing" -> ShowStatus.Ongoing
-        else -> ShowStatus.Completed
+        else -> null
     }
+}.getOrNull()
 
 internal fun getIndexQuality(str: String?): Int {
     val quality =
