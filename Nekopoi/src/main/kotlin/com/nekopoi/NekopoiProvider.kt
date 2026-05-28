@@ -52,7 +52,6 @@ class Nekopoi : MainAPI() {
                     url,
                     referer = referer,
                     headers = baseHeaders,
-                    timeout = 30L,
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -71,7 +70,7 @@ class Nekopoi : MainAPI() {
         // If this succeeds, the headers map was the blocker under Kototoro.
         try {
             android.util.Log.w("Nekopoi", "safeGet falling back to plain app.get for $url")
-            val plain = app.get(url, timeout = 30L)
+            val plain = app.get(url)
             android.util.Log.d(
                 "Nekopoi",
                 "safeGet plain fallback SUCCEEDED for $url (status=${plain.code})",
