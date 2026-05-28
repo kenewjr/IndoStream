@@ -1,6 +1,7 @@
 // NekopoiStreamHandler.kt - Video stream resolution: iframe extraction, ouo.io and mirrored.to bypass.
 package com.nekopoi
 
+import android.util.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.app
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 internal suspend fun Nekopoi.resolveStreamLinks(
     data: String,
@@ -21,7 +23,20 @@ internal suspend fun Nekopoi.resolveStreamLinks(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit,
 ): Boolean {
-    val res = safeGet(data)?.document ?: return false
+    Log.d("Nekopoi", "resolveStreamLinks: data=$data")
+    val res = safeGet(data)?.document ?: run {
+        Log.e("Nekopoi", "resolveStreamLinks: safeGet returned null for $data")
+        return false
+    }
+    Log.d("Nekopoi", "resolveStreamLinks: page fetched, ${res.text().length} chars")
+
+    // Wrap callback to count successful registrations.
+    val linkCount = AtomicInteger(0)
+    val countingCallback: (ExtractorLink) -> Unit = { link ->
+        linkCount.incrementAndGet()
+        Log.d("Nekopoi", "resolveStreamLinks: registered link source=${link.source} url=${link.url.take(80)}")
+        callback(link)
+    }
 
     runAllAsync(
         {
@@ -58,7 +73,8 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                     fixEmbed(normalized)
                 }.distinct()
                 .amap { src ->
-                    loadExtractor(src, "$mainUrl/", subtitleCallback, callback)
+                    Log.d("Nekopoi", "resolveStreamLinks: iframe extractor src=$src")
+                    loadExtractor(src, "$mainUrl/", subtitleCallback, countingCallback)
                 }
         },
         {
@@ -180,7 +196,7 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                                     ?.groupValues
                                     ?.getOrNull(1)
                             if (pixelMatch != null) {
-                                callback.invoke(
+                                countingCallback(
                                     newExtractorLink(
                                         "Pixeldrain",
                                         "Pixeldrain",
@@ -200,7 +216,7 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                                     subtitleCallback,
                                 ) { link ->
                                     launch(Dispatchers.IO) {
-                                        callback.invoke(
+                                        countingCallback(
                                             newExtractorLink(
                                                 link.name,
                                                 link.name,
@@ -222,13 +238,16 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                                 }
                             }
                         } catch (e: Exception) {
+                            Log.e("Nekopoi", "resolveStreamLinks: ouo/embed pipeline error", e)
                         }
                     }
                 }
         },
     )
 
-    return true
+    val total = linkCount.get()
+    Log.d("Nekopoi", "resolveStreamLinks: total links registered = $total")
+    return total > 0
 }
 
 // FIXED: BUG4 - removed APIHolder.getCaptchaToken() (requires UI interaction,
