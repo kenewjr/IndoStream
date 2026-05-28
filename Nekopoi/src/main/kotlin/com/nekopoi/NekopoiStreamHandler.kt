@@ -38,8 +38,11 @@ internal suspend fun Nekopoi.resolveStreamLinks(
         callback(link)
     }
 
-    runAllAsync(
-        {
+    // Replaced runAllAsync (Kototoro R8-stripped CloudStream helper) with pure
+    // kotlinx.coroutines primitives. coroutineScope waits for all child launches.
+    coroutineScope {
+        launch {
+            runCatching {
             res
                 .select(
                     // FIXED: BUG5 - added filemoon/streamtape/doodstream/mp4upload host
@@ -76,8 +79,10 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                     Log.d("Nekopoi", "resolveStreamLinks: iframe extractor src=$src")
                     loadExtractor(src, "$mainUrl/", subtitleCallback, countingCallback)
                 }
-        },
-        {
+            }.onFailure { Log.e("Nekopoi", "iframe extraction block failed", it) }
+        }
+        launch {
+            runCatching {
             val downloadPairs = mutableListOf<Pair<Int, String>>()
             val legacyRows = res.select("div.nk-download-row")
             if (legacyRows.isNotEmpty()) {
@@ -242,8 +247,9 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                         }
                     }
                 }
-        },
-    )
+            }.onFailure { Log.e("Nekopoi", "download/ouo block failed", it) }
+        }
+    }
 
     val total = linkCount.get()
     Log.d("Nekopoi", "resolveStreamLinks: total links registered = $total")
