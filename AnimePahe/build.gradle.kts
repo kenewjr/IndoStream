@@ -1,4 +1,4 @@
-version = 25
+version = 28
 
 android {
     namespace = "com.animepahe"

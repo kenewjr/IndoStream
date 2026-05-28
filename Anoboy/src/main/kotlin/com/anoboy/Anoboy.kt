@@ -255,7 +255,19 @@ class Anoboy : MainAPI() {
                     a.attr("data-video").takeIf { it.isNotBlank() }?.let { resolve(it) }
                 }
 
-            val allSources = (iframeSources + mirrorSources).distinct()
+            // Filter out placeholder/loading pages that don't carry actual video.
+            // Anoboy's player exposes a loading.html iframe that mpv tries to play
+            // as raw HTML and fails. Drop those before extracting.
+            val isPlaceholder: (String) -> Boolean = { src ->
+                src.contains("loading.html", ignoreCase = true) ||
+                    src.endsWith("/about:blank", ignoreCase = true) ||
+                    src.equals("about:blank", ignoreCase = true)
+            }
+
+            val allSources =
+                (iframeSources + mirrorSources)
+                    .filterNot(isPlaceholder)
+                    .distinct()
             if (allSources.isEmpty()) return false
 
             coroutineScope {

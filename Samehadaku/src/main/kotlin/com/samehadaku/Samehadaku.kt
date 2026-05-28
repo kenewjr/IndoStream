@@ -242,7 +242,7 @@ class Samehadaku : MainAPI() {
             // addScore is on LoadResponse.Companion; Kototoro's R8 may strip it.
             runCatching { addScore(rating) }
             plot = description
-            addTrailer(trailer)
+            runCatching { addTrailer(trailer) }
             this.tags = tags
             this.recommendations = recommendations
             addMalId(tracker?.malId)

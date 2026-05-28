@@ -208,7 +208,7 @@ class AnimePahe : MainAPI() {
                             this.name = meta?.title?.get("en") ?: getEpisodeTitle(episodeData)
                             this.posterUrl = meta?.image ?: episodeData.snapshot
                             this.description = meta?.overview
-                            this.score = Score.from10(meta?.rating)
+                            this.score = runCatching { Score.from10(meta?.rating) }.getOrNull()
                             this.runTime = meta?.runtime
                         },
                     )
@@ -239,7 +239,7 @@ class AnimePahe : MainAPI() {
                                             this.name = meta?.title?.get("en") ?: getEpisodeTitle(episodeData)
                                             this.posterUrl = meta?.image ?: episodeData.snapshot
                                             this.description = meta?.overview
-                                            this.score = Score.from10(meta?.rating)
+                                            this.score = runCatching { Score.from10(meta?.rating) }.getOrNull()
                                             this.runTime = meta?.runtime
                                         }
                                     }
@@ -266,7 +266,9 @@ class AnimePahe : MainAPI() {
     )
 
     override suspend fun load(url: String): LoadResponse? {
-        return safeAsync {
+        // Was safeAsync (Kototoro R8 strips com.lagradost.cloudstream3.mvvm.*).
+        // runCatching has same try/catch + return-null semantics.
+        return runCatching {
             val session =
                 parseJson<LoadData>(url).let { data ->
 
@@ -277,7 +279,7 @@ class AnimePahe : MainAPI() {
                     } else {
                         data.session
                     }
-                } ?: return@safeAsync null
+                } ?: return@runCatching null
             val html = app.get("$Proxy$mainUrl/anime/$session", headers = headers).text
             val doc = Jsoup.parse(html)
             val japTitle = doc.selectFirst("h2.japanese")?.text()
@@ -369,7 +371,7 @@ class AnimePahe : MainAPI() {
                 addMalId(malId)
                 addAniListId(anilistId)
             }
-        }
+        }.getOrNull()
     }
 
     override suspend fun loadLinks(

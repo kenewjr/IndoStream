@@ -235,9 +235,9 @@ class LayarKacaProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = Score.from10(rating)
+                this.score = runCatching { Score.from10(rating) }.getOrNull()
                 this.recommendations = recommendations
-                addTrailer(trailer)
+                runCatching { addTrailer(trailer) }
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -246,9 +246,9 @@ class LayarKacaProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = Score.from10(rating)
+                this.score = runCatching { Score.from10(rating) }.getOrNull()
                 this.recommendations = recommendations
-                addTrailer(trailer)
+                runCatching { addTrailer(trailer) }
             }
         }
     }

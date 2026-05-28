@@ -123,14 +123,14 @@ class IdlixProvider : MainAPI() {
                         this.posterUrl = poster
                         this.year = item.releaseDate?.substringBefore("-")?.toIntOrNull()
                         this.quality = getSearchQuality(item.quality)
-                        this.score = Score.from10(item.voteAverage)
+                        this.score = runCatching { Score.from10(item.voteAverage) }.getOrNull()
                     }
                 } else {
                     val seriesurl = "$mainUrl/api/series/${item.slug}"
                     newTvSeriesSearchResponse(title, seriesurl, TvType.TvSeries) {
                         this.posterUrl = poster
                         this.year = item.releaseDate?.substringBefore("-")?.toIntOrNull()
-                        this.score = Score.from10(item.voteAverage)
+                        this.score = runCatching { Score.from10(item.voteAverage) }.getOrNull()
                         this.quality = getSearchQuality(item.quality)
                     }
                 }
@@ -169,13 +169,13 @@ class IdlixProvider : MainAPI() {
                         this.posterUrl = poster
                         this.year = year
                         this.quality = getQualityFromString(item.quality)
-                        this.score = rating.let { Score.from10(it) }
+                        this.score = rating.let { runCatching { Score.from10(it) }.getOrNull() }
                     }
                 } else {
                     newTvSeriesSearchResponse(title, link, TvType.TvSeries) {
                         this.posterUrl = poster
                         this.year = year
-                        this.score = rating.let { Score.from10(it) }
+                        this.score = rating.let { runCatching { Score.from10(it) }.getOrNull() }
                     }
                 }
             }
@@ -279,7 +279,7 @@ class IdlixProvider : MainAPI() {
                         this.episode = ep.episodeNumber
                         this.description = ep.overview
                         this.runTime = ep.runtime
-                        this.score = Score.from10(ep.voteAverage?.toString())
+                        this.score = runCatching { Score.from10(ep.voteAverage?.toString()) }.getOrNull()
                         addDate(ep.airDate)
                         this.posterUrl = ep.stillPath?.let { "https://image.tmdb.org/t/p/w300$it" }
                     },
@@ -312,7 +312,7 @@ class IdlixProvider : MainAPI() {
                             this.episode = ep.episodeNumber
                             this.description = ep.overview
                             this.runTime = ep.runtime
-                            this.score = Score.from10(ep.voteAverage?.toString())
+                            this.score = runCatching { Score.from10(ep.voteAverage?.toString()) }.getOrNull()
                             addDate(ep.airDate)
                             this.posterUrl = ep.stillPath?.let { "https://image.tmdb.org/t/p/w300$it" }
                         },
@@ -327,9 +327,9 @@ class IdlixProvider : MainAPI() {
                 this.year = year
                 this.plot = data.overview
                 this.tags = tags
-                this.score = Score.from10(rating?.toString())
-                addActors(actors)
-                addTrailer(trailer)
+                this.score = runCatching { Score.from10(rating?.toString()) }.getOrNull()
+                runCatching { addActors(actors) }
+                runCatching { addTrailer(trailer) }
                 addTMDbId(data.tmdbId)
                 addImdbId(data.imdbId)
                 this.recommendations = recommendations
@@ -350,9 +350,9 @@ class IdlixProvider : MainAPI() {
                 this.year = year
                 this.plot = data.overview
                 this.tags = tags
-                this.score = Score.from10(rating?.toString())
-                addActors(actors)
-                addTrailer(trailer)
+                this.score = runCatching { Score.from10(rating?.toString()) }.getOrNull()
+                runCatching { addActors(actors) }
+                runCatching { addTrailer(trailer) }
                 addTMDbId(data.tmdbId)
                 addImdbId(data.imdbId)
                 this.recommendations = recommendations

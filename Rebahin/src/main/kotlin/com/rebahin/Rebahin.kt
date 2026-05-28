@@ -206,8 +206,8 @@ open class Rebahin : MainAPI() {
                 this.tags = tags
                 runCatching { addScore(rating) }
                 this.duration = duration
-                addActors(actors)
-                addTrailer(trailer)
+                runCatching { addActors(actors) }
+                runCatching { addTrailer(trailer) }
             }
         } else {
             val links =
@@ -224,8 +224,8 @@ open class Rebahin : MainAPI() {
                 this.tags = tags
                 runCatching { addScore(rating) }
                 this.duration = duration
-                addActors(actors)
-                addTrailer(trailer)
+                runCatching { addActors(actors) }
+                runCatching { addTrailer(trailer) }
             }
         }
     }
@@ -239,7 +239,9 @@ open class Rebahin : MainAPI() {
         coroutineScope {
             data.removeSurrounding("[", "]").split(",").map { it.trim() }.forEach { link ->
                 launch {
-                    safeApiCall {
+                    // Was safeApiCall (Kototoro R8 strips com.lagradost.cloudstream3.mvvm.*).
+                    // Use stdlib runCatching — same try/catch semantics.
+                    runCatching {
                         when {
                             link.startsWith(mainServer) ->
                                 invokeLokalSource(link, subtitleCallback, callback)

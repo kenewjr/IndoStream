@@ -175,8 +175,8 @@ class Pencurimovie : MainAPI() {
                 this.plot = description
                 this.tags = genre
                 this.year = year
-                addTrailer(trailer)
-                addActors(actors)
+                runCatching { addTrailer(trailer) }
+                runCatching { addActors(actors) }
                 this.recommendations = recommendation
             }
         } else {
@@ -185,8 +185,8 @@ class Pencurimovie : MainAPI() {
                 this.plot = description
                 this.tags = genre
                 this.year = year
-                addTrailer(trailer)
-                addActors(actors)
+                runCatching { addTrailer(trailer) }
+                runCatching { addActors(actors) }
                 this.recommendations = recommendation
             }
         }

@@ -178,9 +178,16 @@ class Pahe : ExtractorApi() {
                 .build()
 
         val fContent = client.newCall(fContentRequest).execute()
-        val fContentString = fContent.body.toString()
+        // BUG FIX: was .body.toString() which returns "okhttp3.RealResponseBody@xyz"
+        // (the object's hashCode str), not the actual body. Always use .string().
+        val fContentString = fContent.body.string()
 
-        val (fullString, key, v1, v2) = kwikParamsRegex.find(fContentString)!!.destructured
+        val match = kwikParamsRegex.find(fContentString)
+        if (match == null) {
+            android.util.Log.e("AnimePahe", "Pahe.getUrl: kwikParamsRegex did not match (len=${fContentString.length})")
+            return
+        }
+        val (fullString, key, v1, v2) = match.destructured
         val decrypted = decrypt(fullString, key, v1.toInt(), v2.toInt())
 
         val uri = kwikDUrl.find(decrypted)!!.destructured.component1()
