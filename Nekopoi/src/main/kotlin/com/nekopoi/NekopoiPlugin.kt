@@ -9,5 +9,7 @@ class NekopoiPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Nekopoi())
         registerExtractorAPI(Filemoon())
+        registerExtractorAPI(Playmogo())
+        registerExtractorAPI(Streampoi())
     }
 }

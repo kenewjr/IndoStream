@@ -1,5 +1,6 @@
 package com.nekopoi
 
+import android.util.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -22,6 +23,7 @@ open class Filemoon : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
+        Log.d("Nekopoi", "$name extractor: getUrl url=$url referer=$referer")
         val response = app.get(url, referer = referer ?: url)
         val script =
             response.document
@@ -44,8 +46,16 @@ open class Filemoon : ExtractorApi() {
                     .find(unpacked)
                     ?.groupValues
                     ?.getOrNull(1)
-                ?: return
+                ?: Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""")
+                    .find(unpacked)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                ?: run {
+                    Log.e("Nekopoi", "$name extractor: no m3u8 found in $url (unpacked length=${unpacked.length})")
+                    return
+                }
 
+        Log.d("Nekopoi", "$name extractor: m3u8 found = ${m3u8.take(80)}")
         callback.invoke(
             newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
                 this.referer = referer ?: url
@@ -54,3 +64,18 @@ open class Filemoon : ExtractorApi() {
         )
     }
 }
+
+// FIXED: nekopoi.care now embeds video through playmogo.com clones (Filemoon family).
+// Same packer + sources pattern, just a different hostname — so we inherit getUrl
+// and only override the host the extractor matches against.
+class Playmogo : Filemoon() {
+    override val name = "Playmogo"
+    override val mainUrl = "https://playmogo.com"
+}
+
+// FIXED: streampoi.com is the secondary embed wrapper nekopoi.care now uses.
+class Streampoi : Filemoon() {
+    override val name = "Streampoi"
+    override val mainUrl = "https://streampoi.com"
+}
+
