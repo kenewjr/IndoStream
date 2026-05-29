@@ -42,11 +42,21 @@ internal suspend fun HanimetvProvider.parseLoadPage(url: String): LoadResponse {
     val payload: HanimeVideoResponse? =
         if (response != null && response.isSuccessful) {
             Log.d("HanimeTV", "parseLoadPage: API ${response.code} OK, body=${response.text.length} chars")
-            try {
-                response.parsedSafe<HanimeVideoResponse>()
-            } catch (t: Throwable) {
-                Log.e("HanimeTV", "parseLoadPage: parsedSafe threw", t)
-                null
+            // Dump a sample of the body so we can verify the actual JSON shape.
+            Log.d("HanimeTV", "parseLoadPage: body sample=${response.text.take(1500)}")
+            val direct =
+                try {
+                    response.parsedSafe<HanimeVideoResponse>()
+                } catch (t: Throwable) {
+                    Log.e("HanimeTV", "parseLoadPage: parsedSafe threw", t)
+                    null
+                }
+            direct ?: parseFromRawJson(response.text).also {
+                if (it != null) {
+                    Log.d("HanimeTV", "parseLoadPage: parsed via JSONObject fallback")
+                } else {
+                    Log.w("HanimeTV", "parseLoadPage: JSONObject fallback also failed")
+                }
             }
         } else {
             Log.w(
@@ -221,6 +231,96 @@ internal suspend fun parseLoadFromHtml(url: String, slug: String): HanimeVideoRe
         )
     } catch (t: Throwable) {
         Log.e("HanimeTV", "parseLoadFromHtml: threw", t)
+        null
+    }
+}
+
+/**
+ * Permissive JSON fallback. The v8 endpoint sometimes returns a wrapped
+ * object (`{"data": {...}}`) or uses different casing/keys. This walks the
+ * response with org.json so we can pull what we need without strict DTO
+ * shape matching.
+ */
+internal fun parseFromRawJson(body: String): HanimeVideoResponse? {
+    return try {
+        val root = org.json.JSONObject(body)
+        val container =
+            when {
+                root.has("hentai_video") -> root
+                root.has("data") -> root.getJSONObject("data")
+                else -> root
+            }
+        val v =
+            container.optJSONObject("hentai_video")
+                ?: container.optJSONObject("video")
+                ?: return null
+
+        val tagsArr = container.optJSONArray("hentai_tags")
+        val tags =
+            (0 until (tagsArr?.length() ?: 0)).mapNotNull { i ->
+                tagsArr?.optJSONObject(i)?.optString("text")?.takeIf { it.isNotBlank() }
+                    ?.let { HentaiTag(text = it) }
+            }
+
+        val franchiseArr =
+            container.optJSONArray("hentai_franchise_hentai_videos")
+                ?: container.optJSONArray("franchise_videos")
+        val franchise =
+            (0 until (franchiseArr?.length() ?: 0)).mapNotNull { i ->
+                val obj = franchiseArr?.optJSONObject(i) ?: return@mapNotNull null
+                HentaiVideo(
+                    slug = obj.optString("slug").takeIf { it.isNotBlank() },
+                    name = obj.optString("name").takeIf { it.isNotBlank() },
+                    coverUrl = obj.optString("cover_url").takeIf { it.isNotBlank() },
+                    posterUrl = obj.optString("poster_url").takeIf { it.isNotBlank() },
+                )
+            }
+
+        val manifest =
+            container.optJSONObject("videos_manifest")?.let { m ->
+                val serversArr = m.optJSONArray("servers")
+                val servers =
+                    (0 until (serversArr?.length() ?: 0)).mapNotNull { si ->
+                        val s = serversArr?.optJSONObject(si) ?: return@mapNotNull null
+                        val streamsArr = s.optJSONArray("streams")
+                        val streams =
+                            (0 until (streamsArr?.length() ?: 0)).mapNotNull { ti ->
+                                val st = streamsArr?.optJSONObject(ti) ?: return@mapNotNull null
+                                HanimeStream(
+                                    url = st.optString("url").takeIf { it.isNotBlank() },
+                                    height = st.optInt("height", 0).takeIf { it > 0 },
+                                    width = st.optInt("width", 0).takeIf { it > 0 },
+                                    kind = st.optString("kind").takeIf { it.isNotBlank() },
+                                    isGuestAllowed = st.optBoolean("is_guest_allowed", true),
+                                )
+                            }
+                        HanimeServer(
+                            name = s.optString("name").takeIf { it.isNotBlank() },
+                            streams = streams,
+                        )
+                    }
+                VideosManifest(servers = servers)
+            }
+
+        HanimeVideoResponse(
+            hentaiVideo =
+                HentaiVideo(
+                    slug = v.optString("slug").takeIf { it.isNotBlank() },
+                    name = v.optString("name").takeIf { it.isNotBlank() },
+                    description = v.optString("description").takeIf { it.isNotBlank() },
+                    posterUrl = v.optString("poster_url").takeIf { it.isNotBlank() },
+                    coverUrl = v.optString("cover_url").takeIf { it.isNotBlank() },
+                    brand = v.optString("brand").takeIf { it.isNotBlank() },
+                    releasedAtUnix = v.optLong("released_at_unix", 0L).takeIf { it > 0 },
+                    createdAtUnix = v.optLong("created_at_unix", 0L).takeIf { it > 0 },
+                    episode = v.optString("episode").takeIf { it.isNotBlank() },
+                ),
+            hentaiTags = tags,
+            hentaiFranchiseHentaiVideos = franchise,
+            videosManifest = manifest,
+        )
+    } catch (t: Throwable) {
+        Log.e("HanimeTV", "parseFromRawJson: threw", t)
         null
     }
 }
