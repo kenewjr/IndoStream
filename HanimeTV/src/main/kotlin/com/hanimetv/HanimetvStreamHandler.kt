@@ -49,10 +49,16 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
     }
     Log.d("HanimeTV", "resolveStreamLinks: API OK, body=${response.text.length}")
 
-    val payload = response.parsedSafe<HanimeVideoResponse>() ?: run {
-        Log.e("HanimeTV", "resolveStreamLinks: parse failed, falling back to HTML")
-        return resolveStreamsFromHtml(data, callback)
-    }
+    val payload =
+        response.parsedSafe<HanimeVideoResponse>()
+            ?: parseFromRawJson(response.text)
+            ?: run {
+                Log.e(
+                    "HanimeTV",
+                    "resolveStreamLinks: parse + JSONObject fallback failed, trying HTML",
+                )
+                return resolveStreamsFromHtml(data, callback)
+            }
     val manifest = payload.videosManifest ?: run {
         Log.w("HanimeTV", "resolveStreamLinks: no videos_manifest, falling back to HTML")
         return resolveStreamsFromHtml(data, callback)

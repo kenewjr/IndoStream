@@ -32,7 +32,6 @@ data class HentaiVideo(
     @JsonProperty("cover_url") val coverUrl: String? = null,
     @JsonProperty("brand") val brand: String? = null,
     @JsonProperty("brand_id") val brandId: String? = null,
-    @JsonProperty("titles") val titles: List<String>? = null,
     @JsonProperty("hentai_tags") val tags: List<HentaiTag>? = null,
     @JsonProperty("monthly_rank") val monthlyRank: Int? = null,
     @JsonProperty("is_censored") val isCensored: Boolean? = null,
