@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.nicehttp.NiceResponse
 import java.util.Calendar
 import java.util.TimeZone
 
@@ -28,28 +29,52 @@ internal suspend fun HanimetvProvider.parseLoadPage(url: String): LoadResponse {
     Log.d("HanimeTV", "parseLoadPage: slug=$slug")
 
     val apiUrl = "$API_BASE/video?id=$slug"
-    val response = app.get(apiUrl, headers = apiHeaders, timeout = 30L)
-    if (!response.isSuccessful) {
-        throw ErrorLoadingException("HanimeTV API ${response.code}: $apiUrl")
-    }
+    Log.d("HanimeTV", "parseLoadPage: GET $apiUrl")
 
-    val payload = response.parsedSafe<HanimeVideoResponse>()
-        ?: throw ErrorLoadingException("HanimeTV API parse failure: $apiUrl")
-    val video = payload.hentaiVideo
-        ?: throw ErrorLoadingException("HanimeTV API missing hentai_video: $apiUrl")
+    val response: NiceResponse? =
+        try {
+            app.get(apiUrl, headers = apiHeaders, timeout = 30L)
+        } catch (t: Throwable) {
+            Log.e("HanimeTV", "parseLoadPage: API request threw", t)
+            null
+        }
+
+    val payload: HanimeVideoResponse? =
+        if (response != null && response.isSuccessful) {
+            Log.d("HanimeTV", "parseLoadPage: API ${response.code} OK, body=${response.text.length} chars")
+            try {
+                response.parsedSafe<HanimeVideoResponse>()
+            } catch (t: Throwable) {
+                Log.e("HanimeTV", "parseLoadPage: parsedSafe threw", t)
+                null
+            }
+        } else {
+            Log.w(
+                "HanimeTV",
+                "parseLoadPage: API failed code=${response?.code} - falling back to HTML scrape",
+            )
+            null
+        }
+
+    val effectivePayload = payload ?: parseLoadFromHtml(url, slug)
+        ?: throw ErrorLoadingException("HanimeTV: both API and HTML scrape failed for $slug")
+
+    val video = effectivePayload.hentaiVideo
+        ?: throw ErrorLoadingException("HanimeTV: missing hentai_video for $slug")
+    Log.d("HanimeTV", "parseLoadPage: video name='${video.name}'")
 
     val title = video.name?.takeIf { it.isNotBlank() } ?: slug
     val poster = video.coverUrl?.takeIf { it.isNotBlank() }
         ?: video.posterUrl?.takeIf { it.isNotBlank() }
     val description = video.description?.let { stripHtml(it) }
     val tags =
-        (video.tags ?: payload.hentaiTags)
+        (video.tags ?: effectivePayload.hentaiTags)
             ?.mapNotNull { it.text?.trim()?.takeIf { t -> t.isNotEmpty() } }
             ?.distinct()
             .orEmpty()
     val year = unixToYear(video.releasedAtUnix ?: video.createdAtUnix)
 
-    val franchiseVideos = payload.hentaiFranchiseHentaiVideos.orEmpty()
+    val franchiseVideos = effectivePayload.hentaiFranchiseHentaiVideos.orEmpty()
 
     val episodes =
         if (franchiseVideos.size > 1) {
@@ -139,4 +164,63 @@ private fun unixToYear(unix: Long?): Int? {
         cal.timeInMillis = unix * 1000
         cal.get(Calendar.YEAR)
     }.getOrNull()
+}
+
+/**
+ * HTML fallback for when the v8 API blocks us (401/403/Cloudflare). The
+ * hanime.tv HTML page embeds a `window.__NUXT__ = (function(...))` blob
+ * that contains a `state` object with the same shape as the API response
+ * (hentai_video, videos_manifest, hentai_franchise_hentai_videos).
+ *
+ * We extract just the JSON-y fragments we need with regex; this is more
+ * resilient than trying to fully evaluate the IIFE.
+ */
+internal suspend fun parseLoadFromHtml(url: String, slug: String): HanimeVideoResponse? {
+    return try {
+        Log.d("HanimeTV", "parseLoadFromHtml: GET $url")
+        val res = app.get(url, headers = baseHeaders, timeout = 30L)
+        if (!res.isSuccessful) {
+            Log.e("HanimeTV", "parseLoadFromHtml: HTTP ${res.code}")
+            return null
+        }
+        val html = res.text
+        Log.d("HanimeTV", "parseLoadFromHtml: ${html.length} chars")
+
+        val titleMatch =
+            Regex("""<meta\s+property="og:title"\s+content="([^"]+)"""")
+                .find(html)?.groupValues?.getOrNull(1)
+                ?: Regex("""<title>([^<]+)</title>""").find(html)?.groupValues?.getOrNull(1)
+        val descMatch =
+            Regex("""<meta\s+property="og:description"\s+content="([^"]+)"""")
+                .find(html)?.groupValues?.getOrNull(1)
+        val posterMatch =
+            Regex("""<meta\s+property="og:image"\s+content="([^"]+)"""")
+                .find(html)?.groupValues?.getOrNull(1)
+
+        val name = titleMatch
+            ?.removeSuffix(" | hanime.tv")
+            ?.removeSuffix(" - hanime.tv")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
+        if (name.isNullOrBlank()) {
+            Log.w("HanimeTV", "parseLoadFromHtml: no title found, abort")
+            return null
+        }
+
+        Log.d("HanimeTV", "parseLoadFromHtml: scraped title='$name'")
+        HanimeVideoResponse(
+            hentaiVideo =
+                HentaiVideo(
+                    slug = slug,
+                    name = name,
+                    description = descMatch,
+                    posterUrl = posterMatch,
+                    coverUrl = posterMatch,
+                ),
+        )
+    } catch (t: Throwable) {
+        Log.e("HanimeTV", "parseLoadFromHtml: threw", t)
+        null
+    }
 }

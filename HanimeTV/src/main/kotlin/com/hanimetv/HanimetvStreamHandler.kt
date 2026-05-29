@@ -31,27 +31,31 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
         return false
     }
     val apiUrl = "$API_BASE/video?id=$slug"
-    Log.d("HanimeTV", "resolveStreamLinks: fetching $apiUrl")
+    Log.d("HanimeTV", "resolveStreamLinks: GET $apiUrl")
 
     val response =
         try {
             app.get(apiUrl, headers = apiHeaders, timeout = 30L)
         } catch (t: Throwable) {
-            Log.e("HanimeTV", "resolveStreamLinks: request failed for $apiUrl", t)
-            return false
+            Log.e("HanimeTV", "resolveStreamLinks: request threw for $apiUrl", t)
+            null
         }
-    if (!response.isSuccessful) {
-        Log.e("HanimeTV", "resolveStreamLinks: api ${response.code} for $apiUrl")
-        return false
+    if (response == null || !response.isSuccessful) {
+        Log.w(
+            "HanimeTV",
+            "resolveStreamLinks: API failed code=${response?.code}, falling back to HTML",
+        )
+        return resolveStreamsFromHtml(data, callback)
     }
+    Log.d("HanimeTV", "resolveStreamLinks: API OK, body=${response.text.length}")
 
     val payload = response.parsedSafe<HanimeVideoResponse>() ?: run {
-        Log.e("HanimeTV", "resolveStreamLinks: parse failure for $apiUrl")
-        return false
+        Log.e("HanimeTV", "resolveStreamLinks: parse failed, falling back to HTML")
+        return resolveStreamsFromHtml(data, callback)
     }
     val manifest = payload.videosManifest ?: run {
-        Log.w("HanimeTV", "resolveStreamLinks: no videos_manifest for $slug")
-        return false
+        Log.w("HanimeTV", "resolveStreamLinks: no videos_manifest, falling back to HTML")
+        return resolveStreamsFromHtml(data, callback)
     }
 
     val linkCount = AtomicInteger(0)
@@ -104,4 +108,52 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
     val total = linkCount.get()
     Log.d("HanimeTV", "resolveStreamLinks: total $total links registered")
     return total > 0
+}
+
+/**
+ * HTML fallback for streams. Hanime.tv embeds the manifest JSON in the
+ * page HTML inside a `window.__NUXT__ = ...` IIFE. We don't fully
+ * evaluate it - we just regex out direct .m3u8 / .mp4 references.
+ */
+internal suspend fun resolveStreamsFromHtml(
+    pageUrl: String,
+    callback: (ExtractorLink) -> Unit,
+): Boolean {
+    return try {
+        Log.d("HanimeTV", "resolveStreamsFromHtml: GET $pageUrl")
+        val res = app.get(pageUrl, headers = baseHeaders, timeout = 30L)
+        if (!res.isSuccessful) {
+            Log.e("HanimeTV", "resolveStreamsFromHtml: HTTP ${res.code}")
+            return false
+        }
+        val html = res.text
+        val seen = mutableSetOf<String>()
+        val regex =
+            Regex("""(https?:\\?/\\?/[^"'\s]+\.(?:m3u8|mp4)[^"'\s]*)""", RegexOption.IGNORE_CASE)
+        regex.findAll(html).forEach { m ->
+            val raw = m.groupValues[1].replace("\\/", "/")
+            if (!seen.add(raw)) return@forEach
+            val isM3u8 = raw.contains(".m3u8", true)
+            val heightMatch = Regex("""(\d{3,4})p""").find(raw)?.groupValues?.getOrNull(1)
+                ?.toIntOrNull()
+            callback(
+                newExtractorLink(
+                    source = "HanimeTV",
+                    name =
+                        if (heightMatch != null) "HanimeTV ${heightMatch}p" else "HanimeTV",
+                    url = raw,
+                    type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
+                ) {
+                    this.referer = "$DOMAIN/"
+                    this.quality = heightToQuality(heightMatch)
+                },
+            )
+            Log.d("HanimeTV", "html-fallback registered ${raw.take(80)}")
+        }
+        Log.d("HanimeTV", "resolveStreamsFromHtml: ${seen.size} links found")
+        seen.isNotEmpty()
+    } catch (t: Throwable) {
+        Log.e("HanimeTV", "resolveStreamsFromHtml: threw", t)
+        false
+    }
 }
