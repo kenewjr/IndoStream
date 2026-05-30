@@ -62,6 +62,10 @@ class HanimetvProvider : MainAPI() {
         val data = request.data
         val (kind, arg) =
             data.substringBefore(":") to data.substringAfter(":", missingDelimiterValue = "")
+        android.util.Log.d(
+            "HanimeTV",
+            "getMainPage: row='${request.name}' kind=$kind arg='$arg' page=$page",
+        )
 
         val items: List<SearchResponse> =
             when (kind) {
@@ -76,8 +80,15 @@ class HanimetvProvider : MainAPI() {
                 }
                 "tag" -> fetchByTag(arg, zeroPage)
                 "brand" -> fetchByBrand(arg, zeroPage)
-                else -> emptyList()
+                else -> {
+                    android.util.Log.w("HanimeTV", "getMainPage: unknown kind '$kind' for row '${request.name}'")
+                    emptyList()
+                }
             }
+        android.util.Log.d(
+            "HanimeTV",
+            "getMainPage: row='${request.name}' kind=$kind produced ${items.size} items",
+        )
 
         return newHomePageResponse(
             list =
@@ -95,9 +106,27 @@ class HanimetvProvider : MainAPI() {
         page: Int,
     ): List<SearchResponse> {
         val url = "$API_BASE/browse-trending?time=$time&page=$page"
-        val resp = safeApiGet(url) ?: return emptyList()
-        val parsed = resp.parsedSafe<HanimeBrowseResponse>() ?: return emptyList()
-        return parsed.hentaiVideos.orEmpty().mapNotNull { hentaiVideoToSearchResponse(it) }
+        val resp = safeApiGet(url) ?: run {
+            android.util.Log.e("HanimeTV", "fetchTrending: safeApiGet null for $url")
+            return emptyList()
+        }
+        if (!resp.isSuccessful) {
+            android.util.Log.e("HanimeTV", "fetchTrending: code=${resp.code} url=$url")
+            return emptyList()
+        }
+        val parsed = resp.parsedSafe<HanimeBrowseResponse>() ?: run {
+            android.util.Log.e(
+                "HanimeTV",
+                "fetchTrending: parse failed (len=${resp.text.length}) for $url; sample=${resp.text.take(200)}",
+            )
+            return emptyList()
+        }
+        val items = parsed.hentaiVideos.orEmpty().mapNotNull { hentaiVideoToSearchResponse(it) }
+        android.util.Log.d(
+            "HanimeTV",
+            "fetchTrending: time=$time page=$page raw=${parsed.hentaiVideos?.size ?: 0} mapped=${items.size}",
+        )
+        return items
     }
 
     private suspend fun fetchBrowse(
@@ -107,9 +136,27 @@ class HanimetvProvider : MainAPI() {
     ): List<SearchResponse> {
         val url =
             "$API_BASE/browse?time=all-time&order_by=$orderBy&ordering=$ordering&page=$page"
-        val resp = safeApiGet(url) ?: return emptyList()
-        val parsed = resp.parsedSafe<HanimeBrowseResponse>() ?: return emptyList()
-        return parsed.hentaiVideos.orEmpty().mapNotNull { hentaiVideoToSearchResponse(it) }
+        val resp = safeApiGet(url) ?: run {
+            android.util.Log.e("HanimeTV", "fetchBrowse: safeApiGet null for $url")
+            return emptyList()
+        }
+        if (!resp.isSuccessful) {
+            android.util.Log.e("HanimeTV", "fetchBrowse: code=${resp.code} url=$url")
+            return emptyList()
+        }
+        val parsed = resp.parsedSafe<HanimeBrowseResponse>() ?: run {
+            android.util.Log.e(
+                "HanimeTV",
+                "fetchBrowse: parse failed (len=${resp.text.length}) for $url; sample=${resp.text.take(200)}",
+            )
+            return emptyList()
+        }
+        val items = parsed.hentaiVideos.orEmpty().mapNotNull { hentaiVideoToSearchResponse(it) }
+        android.util.Log.d(
+            "HanimeTV",
+            "fetchBrowse: order_by=$orderBy ordering=$ordering page=$page raw=${parsed.hentaiVideos?.size ?: 0} mapped=${items.size}",
+        )
+        return items
     }
 
     private suspend fun fetchByTag(
@@ -189,20 +236,32 @@ class HanimetvProvider : MainAPI() {
                     timeout = 30L,
                 )
             } catch (t: Throwable) {
-                android.util.Log.e("HanimeTV", "search POST failed", t)
+                android.util.Log.e("HanimeTV", "search POST failed body=$bodyJson", t)
                 return emptyList()
             }
 
         if (!response.isSuccessful) {
-            android.util.Log.e("HanimeTV", "search POST status ${response.code}")
+            android.util.Log.e(
+                "HanimeTV",
+                "search POST status ${response.code} body=$bodyJson sample=${response.text.take(200)}",
+            )
             return emptyList()
         }
-        val parsed = response.parsedSafe<HanimeSearchResponse>() ?: return emptyList()
-        val hitsJson = parsed.hits ?: return emptyList()
+        val parsed = response.parsedSafe<HanimeSearchResponse>() ?: run {
+            android.util.Log.e(
+                "HanimeTV",
+                "search POST parse failed sample=${response.text.take(200)}",
+            )
+            return emptyList()
+        }
+        val hitsJson = parsed.hits ?: run {
+            android.util.Log.w("HanimeTV", "search POST: no hits field, body=$bodyJson")
+            return emptyList()
+        }
 
         return runCatching {
             val arr = JSONArray(hitsJson)
-            (0 until arr.length()).mapNotNull { idx ->
+            val list = (0 until arr.length()).mapNotNull { idx ->
                 val obj = arr.optJSONObject(idx) ?: return@mapNotNull null
                 val slug = obj.optString("slug", "").takeIf { it.isNotBlank() }
                     ?: return@mapNotNull null
@@ -219,8 +278,13 @@ class HanimetvProvider : MainAPI() {
                     this.posterUrl = poster
                 }
             }
+            android.util.Log.d(
+                "HanimeTV",
+                "searchViaPostApi: tags=$tags brands=$brands page=$page hits=${arr.length()} mapped=${list.size}",
+            )
+            list
         }.getOrElse {
-            android.util.Log.e("HanimeTV", "hits parse failed", it)
+            android.util.Log.e("HanimeTV", "hits parse failed body=$bodyJson sample=${hitsJson.take(200)}", it)
             emptyList()
         }
     }

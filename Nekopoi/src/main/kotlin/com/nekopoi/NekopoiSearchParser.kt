@@ -98,7 +98,7 @@ internal fun MainAPI.toPostCardResult(element: Element): AnimeSearchResponse? {
 
 internal fun MainAPI.toBroadResult(element: Element): AnimeSearchResponse? {
     val h2El = element.selectFirst("h2") ?: return null
-    val h2Link = h2El.selectFirst("a[href]") ?: h2El.parent()?.takeIf { it.tagName() == "a" && it.hasAttr("href") }
+    val h2Link: Element? = h2El.selectFirst("a[href]") ?: h2El.parent()?.takeIf { it.tagName() == "a" && it.hasAttr("href") }
     val link = h2Link ?: element.selectFirst("a[href]") ?: return null
 
     val title =

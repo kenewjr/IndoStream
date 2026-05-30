@@ -134,10 +134,11 @@ internal suspend fun Nekopoi.resolveStreamLinks(
                         }
 
                         if (currentQuality != null) {
+                            val quality = currentQuality
                             element.select("a[href*=ouo]").forEach { link ->
                                 val href = link.attr("href").takeIf { it.isNotBlank() }
                                 if (href != null) {
-                                    downloadPairs.add(currentQuality!! to href)
+                                    downloadPairs.add(quality to href)
                                 }
                             }
                         }

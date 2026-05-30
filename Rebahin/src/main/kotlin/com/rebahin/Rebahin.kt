@@ -308,10 +308,12 @@ open class Rebahin : MainAPI() {
                         ?.groupValues
                         ?.getOrNull(1)
             tryParseJson<List<Tracks>>("[$subData]")?.map {
+                val label = it.label ?: return@map null
+                val file = it.file?.takeIf { f -> f.contains(".srt") } ?: return@map null
                 subCallback.invoke(
-                    SubtitleFile(
-                        getLanguage(it.label ?: return@map null),
-                        if (it.file?.contains(".srt") == true) it.file else return@map null,
+                    newSubtitleFile(
+                        lang = getLanguage(label),
+                        url = file,
                     ),
                 )
             }
@@ -326,8 +328,8 @@ open class Rebahin : MainAPI() {
     private fun getBaseUrl(url: String): String = URI(url).let { "${it.scheme}://${it.host}" }
 
     private data class Tracks(
-        @JsonProperty("file") val file: String? = null,
-        @JsonProperty("label") val label: String? = null,
-        @JsonProperty("kind") val kind: String? = null,
+        @param:JsonProperty("file") val file: String? = null,
+        @param:JsonProperty("label") val label: String? = null,
+        @param:JsonProperty("kind") val kind: String? = null,
     )
 }

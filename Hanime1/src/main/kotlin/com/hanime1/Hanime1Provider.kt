@@ -39,11 +39,19 @@ class Hanime1Provider : MainAPI() {
         var lastError: Throwable? = null
         repeat(maxRetries) { attempt ->
             try {
-                return app.get(
+                val res = app.get(
                     url,
                     referer = referer,
                     headers = baseHeaders,
                     timeout = 30L,
+                )
+                if (res.isSuccessful && !looksLikeChallenge(res.text)) {
+                    return res
+                }
+                android.util.Log.w(
+                    "Hanime1",
+                    "safeGet attempt ${attempt + 1}/$maxRetries got code=${res.code} " +
+                        "len=${res.text.length} challenge=${looksLikeChallenge(res.text)} for $url",
                 )
             } catch (t: Throwable) {
                 lastError = t
@@ -52,14 +60,19 @@ class Hanime1Provider : MainAPI() {
                     "safeGet attempt ${attempt + 1}/$maxRetries failed for $url: " +
                         "${t.javaClass.simpleName}: ${t.message}",
                 )
-                if (attempt < maxRetries - 1) delay(700L * (attempt + 1))
             }
+            if (attempt < maxRetries - 1) delay(700L * (attempt + 1))
         }
 
         // Last-ditch: try without our extra headers (some CF-routes prefer minimal request)
         try {
             android.util.Log.w("Hanime1", "safeGet falling back to plain app.get for $url")
-            return app.get(url, timeout = 30L)
+            val res = app.get(url, timeout = 30L)
+            if (res.isSuccessful && !looksLikeChallenge(res.text)) return res
+            android.util.Log.e(
+                "Hanime1",
+                "safeGet plain fallback unusable code=${res.code} len=${res.text.length} for $url",
+            )
         } catch (t: Throwable) {
             android.util.Log.e(
                 "Hanime1",
@@ -69,6 +82,18 @@ class Hanime1Provider : MainAPI() {
         }
         logError(lastError ?: Exception("Hanime1 safeGet failed: $url"))
         return null
+    }
+
+    private fun looksLikeChallenge(body: String): Boolean {
+        if (body.length < 4096) {
+            val lower = body.lowercase()
+            if (lower.contains("just a moment") ||
+                lower.contains("cf-chl-") ||
+                lower.contains("checking your browser") ||
+                lower.contains("attention required")
+            ) return true
+        }
+        return false
     }
 
     override suspend fun getMainPage(
@@ -144,13 +169,53 @@ class Hanime1Provider : MainAPI() {
             } else {
                 "$mainUrl/search?${params.joinToString("&")}"
             }
-        val doc = safeGet(target)?.document ?: return emptyList()
-        return doc
-            .select("div.search-doujin-videos.hidden-xs")
-            .ifEmpty { doc.select("div.search-doujin-videos") }
-            .ifEmpty { doc.select("a[href*='/watch?v=']").mapNotNull { it.parent() } }
-            .mapNotNull { toSearchResult(it) }
-            .distinctBy { it.url }
+        android.util.Log.d("Hanime1", "search: query='$query' parsed=$parsed -> $target")
+        val results = collectSearchResults(target)
+        if (results.isNotEmpty()) {
+            android.util.Log.d("Hanime1", "search: returning ${results.size} primary results")
+            return results
+        }
+
+        // Fallback 1: drop any prefix and try the keyword as a plain query.
+        if (parsed.key != null) {
+            val plain = "$mainUrl/search?query=${encodeQuery(query)}"
+            android.util.Log.w("Hanime1", "search: empty primary, retrying plain $plain")
+            val plainRes = collectSearchResults(plain)
+            if (plainRes.isNotEmpty()) return plainRes
+        }
+
+        // Fallback 2: tag-style search for the raw query.
+        val tagUrl = "$mainUrl/search?tags%5B%5D=${encodeQuery(query.trim())}"
+        android.util.Log.w("Hanime1", "search: empty plain, retrying tag $tagUrl")
+        return collectSearchResults(tagUrl)
+    }
+
+    private suspend fun collectSearchResults(target: String): List<SearchResponse> {
+        val res = safeGet(target)
+        if (res == null) {
+            android.util.Log.w("Hanime1", "collectSearchResults: safeGet returned null for $target")
+            return emptyList()
+        }
+        val doc = res.document
+        val bodyLen = res.text.length
+        val cards =
+            doc.select("div.search-doujin-videos.hidden-xs")
+                .ifEmpty { doc.select("div.search-doujin-videos") }
+                .ifEmpty { doc.select("div.home-rows-videos-wrapper > div") }
+        val parsed =
+            cards
+                .mapNotNull { toSearchResult(it) }
+                .ifEmpty {
+                    doc.select("a[href*='/watch?v=']")
+                        .mapNotNull { it.parent()?.let { p -> toGenericResult(p) } }
+                }
+                .distinctBy { it.url }
+        android.util.Log.d(
+            "Hanime1",
+            "collectSearchResults: code=${res.code} len=$bodyLen cards=${cards.size} " +
+                "parsed=${parsed.size} for $target",
+        )
+        return parsed
     }
 
     override suspend fun load(url: String): LoadResponse = parseLoadPage(url)
