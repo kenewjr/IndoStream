@@ -46,19 +46,15 @@ internal val searchApiHeaders =
     )
 
 /**
- * Hanime.tv main page sections, each backed by a v8 API endpoint.
- * The "data" string here is interpreted by [HanimetvProvider.getMainPage]
- * via the `kind:arg` micro-DSL so all endpoints share one entrypoint.
+ * Hanime.tv main page sections.
+ *
+ * NOTE: /api/v8/browse-trending and /api/v8/browse return 401 without an auth
+ * token (logs confirm `fetchTrending: code=401`). Tag/brand rows go through
+ * the public `search.htv-services.com` algolia endpoint which does not require
+ * auth, so we keep only those.
  */
 internal val hanimetvMainPage: List<MainPageData> =
     mainPageOf(
-        "trending:week" to "🔥 Trending This Week",
-        "trending:month" to "📈 Trending This Month",
-        "browse:released_at:desc" to "🆕 Recently Released",
-        "browse:created_at:desc" to "🆕 Recently Uploaded",
-        "browse:views:desc" to "👁️ Most Viewed",
-        "browse:likes:desc" to "❤️ Most Liked",
-        "browse:downloads:desc" to "⬇️ Most Downloaded",
         "tag:Big Boobs" to "Big Boobs",
         "tag:Schoolgirl" to "Schoolgirl",
         "tag:Vanilla" to "Vanilla",

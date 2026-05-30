@@ -45,7 +45,7 @@ class Hanime1Provider : MainAPI() {
                     headers = baseHeaders,
                     timeout = 30L,
                 )
-                if (res.isSuccessful && !looksLikeChallenge(res.text)) {
+                if (res.code in 200..399 && !looksLikeChallenge(res.text)) {
                     return res
                 }
                 android.util.Log.w(
@@ -68,7 +68,7 @@ class Hanime1Provider : MainAPI() {
         try {
             android.util.Log.w("Hanime1", "safeGet falling back to plain app.get for $url")
             val res = app.get(url, timeout = 30L)
-            if (res.isSuccessful && !looksLikeChallenge(res.text)) return res
+            if (res.code in 200..399 && !looksLikeChallenge(res.text)) return res
             android.util.Log.e(
                 "Hanime1",
                 "safeGet plain fallback unusable code=${res.code} len=${res.text.length} for $url",
@@ -96,10 +96,29 @@ class Hanime1Provider : MainAPI() {
         return false
     }
 
+    @Volatile private var sessionWarmed = false
+
+    /**
+     * Hanime1.me 403's the very first request from a fresh client. A throwaway
+     * GET against the homepage with full browser headers populates whatever
+     * cookie / fingerprint store NiceHttp keeps, after which subsequent calls
+     * succeed. Idempotent and best-effort: failures are swallowed.
+     */
+    private suspend fun warmupSession() {
+        if (sessionWarmed) return
+        try {
+            app.get(mainUrl, headers = baseHeaders, timeout = 15L)
+        } catch (_: Throwable) {
+            // Ignore — even a failed warmup may have set cookies.
+        }
+        sessionWarmed = true
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
+        if (page <= 1) warmupSession()
         val base = request.data
         val pagedUrl =
             when {

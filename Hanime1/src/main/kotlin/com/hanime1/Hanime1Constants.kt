@@ -11,12 +11,20 @@ internal const val DOMAIN = "https://hanime1.me"
 internal val baseHeaders =
     mapOf(
         "User-Agent" to
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/124.0.0.0 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language" to "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/124.0.0.0 Mobile Safari/537.36",
+        "Accept" to
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp," +
+                "image/apng,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.9",
+        "Accept-Encoding" to "gzip, deflate, br",
         "Connection" to "keep-alive",
-        "Referer" to "$DOMAIN/",
+        "Upgrade-Insecure-Requests" to "1",
+        "Sec-Fetch-Dest" to "document",
+        "Sec-Fetch-Mode" to "navigate",
+        "Sec-Fetch-Site" to "none",
+        "Sec-Fetch-User" to "?1",
+        "Cache-Control" to "max-age=0",
     )
 
 internal val ajaxHeaders =
