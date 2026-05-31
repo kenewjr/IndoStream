@@ -69,15 +69,9 @@ class HanimetvProvider : MainAPI() {
 
         val items: List<SearchResponse> =
             when (kind) {
-                "trending" -> fetchTrending(arg.ifBlank { "week" }, zeroPage)
-                "browse" -> {
-                    val parts = arg.split(":")
-                    fetchBrowse(
-                        orderBy = parts.getOrNull(0).orEmpty(),
-                        ordering = parts.getOrNull(1) ?: "desc",
-                        page = zeroPage,
-                    )
-                }
+                "sorted" -> fetchSorted(orderBy = arg, page = zeroPage)
+                "random" -> fetchRandom(orderBy = arg.ifBlank { "created_at_unix" })
+                // Legacy kinds kept for back-compat with cached cards.
                 "tag" -> fetchByTag(arg, zeroPage)
                 "brand" -> fetchByBrand(arg, zeroPage)
                 else -> {
@@ -179,6 +173,42 @@ class HanimetvProvider : MainAPI() {
         page = page,
     )
 
+    /**
+     * Drives the Recent Uploads / New Releases / Trending rows. Each one is
+     * just a different order_by on the public search endpoint:
+     *   created_at_unix  -> Recent Uploads
+     *   released_at_unix -> New Releases
+     *   views            -> Trending
+     */
+    private suspend fun fetchSorted(
+        orderBy: String,
+        page: Int,
+    ): List<SearchResponse> = searchViaPostApi(
+        searchText = "",
+        tags = emptyList(),
+        brands = emptyList(),
+        page = page,
+        orderBy = orderBy.ifBlank { "created_at_unix" },
+    )
+
+    /**
+     * Random row: pick a random page from [0..40] (≈2000 items) on the same
+     * sort key, so the row reshuffles every refresh without auth.
+     */
+    private suspend fun fetchRandom(
+        orderBy: String,
+    ): List<SearchResponse> {
+        val page = (0..40).random()
+        android.util.Log.d("HanimeTV", "fetchRandom: orderBy=$orderBy picked page=$page")
+        return searchViaPostApi(
+            searchText = "",
+            tags = emptyList(),
+            brands = emptyList(),
+            page = page,
+            orderBy = orderBy,
+        ).shuffled()
+    }
+
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -213,6 +243,8 @@ class HanimetvProvider : MainAPI() {
         tags: List<String>,
         brands: List<String>,
         page: Int,
+        orderBy: String = "created_at_unix",
+        ordering: String = "desc",
     ): List<SearchResponse> {
         val bodyJson =
             JSONObject().apply {
@@ -221,8 +253,8 @@ class HanimetvProvider : MainAPI() {
                 put("tags_mode", "AND")
                 put("brands", JSONArray(brands))
                 put("blacklist", JSONArray())
-                put("order_by", "created_at_unix")
-                put("ordering", "desc")
+                put("order_by", orderBy)
+                put("ordering", ordering)
                 put("page", page)
             }.toString()
 

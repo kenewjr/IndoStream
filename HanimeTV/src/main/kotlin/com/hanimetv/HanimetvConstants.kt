@@ -59,27 +59,20 @@ internal val searchApiHeaders =
 /**
  * Hanime.tv main page sections.
  *
- * NOTE: /api/v8/browse-trending and /api/v8/browse return 401 without an auth
- * token (logs confirm `fetchTrending: code=401`). Tag/brand rows go through
- * the public `search.htv-services.com` algolia endpoint which does not require
- * auth, so we keep only those.
+ * The public `search.htv-services.com` endpoint accepts an `order_by` field;
+ * each row here is just a different sort key on the same endpoint. Random uses
+ * `created_at_unix` desc but the dispatcher in HanimetvProvider picks a random
+ * page each time so the row reshuffles on every refresh.
+ *
+ * /api/v8/browse-trending and /api/v8/browse return 401 without an auth token
+ * so we don't use them here.
  */
 internal val hanimetvMainPage: List<MainPageData> =
     mainPageOf(
-        "tag:Big Boobs" to "Big Boobs",
-        "tag:Schoolgirl" to "Schoolgirl",
-        "tag:Vanilla" to "Vanilla",
-        "tag:Romance" to "Romance",
-        "tag:Maid" to "Maid",
-        "tag:Yuri" to "Yuri",
-        "tag:NTR" to "NTR",
-        "tag:Harem" to "Harem",
-        "tag:MILF" to "MILF",
-        "tag:Incest" to "Incest",
-        "tag:Futanari" to "Futanari",
-        "tag:Loli" to "Loli",
-        "brand:Uncensored" to "Uncensored",
-        "brand:3D" to "3D",
+        "sorted:created_at_unix" to "🆕 Recent Uploads",
+        "sorted:released_at_unix" to "📅 New Releases",
+        "sorted:views" to "🔥 Trending",
+        "random:created_at_unix" to "🎲 Random",
     )
 
 internal fun getStatus(t: String?): ShowStatus? = runCatching {

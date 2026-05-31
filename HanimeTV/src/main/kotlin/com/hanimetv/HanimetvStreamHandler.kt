@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -139,12 +140,52 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
     Log.d("HanimeTV", "resolveStreamLinks: registered=$total stubs_skipped=$stubs")
 
     // If the only thing the API gave us were guest stubs, fall back to the
-    // HTML page (NUXT blob sometimes leaks the real URLs).
+    // official player iframe and finally to HTML regex on the page.
     if (total == 0) {
-        Log.w("HanimeTV", "API returned no real streams (likely guest-blocked), trying HTML")
+        Log.w("HanimeTV", "API returned no real streams (likely guest-blocked)")
+        val viaIframe = resolveViaPlayerIframe(slug, data, subtitleCallback, callback)
+        if (viaIframe) return true
+        Log.w("HanimeTV", "player iframe yielded nothing, trying HTML scrape")
         return resolveStreamsFromHtml(data, callback)
     }
     return true
+}
+
+/**
+ * Hanime.tv embeds an iframe at https://player.hanime.tv/?v=<slug> on every
+ * watch page. Forwarding that URL through CloudStream's loadExtractor lets the
+ * generic Cloudflare-stream / Streamtape / etc. extractors take a crack at it.
+ *
+ * This is the realistic path now that the v8 /api/v8/video?id=<slug> endpoint
+ * gates real CDN URLs behind a WASM-generated X-Signature header that we can't
+ * reproduce from a Kotlin plugin.
+ */
+private suspend fun resolveViaPlayerIframe(
+    slug: String,
+    referer: String,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit,
+): Boolean {
+    val iframeUrl = "https://player.hanime.tv/?v=$slug"
+    Log.d("HanimeTV", "resolveViaPlayerIframe: $iframeUrl")
+    val before = AtomicInteger(0)
+    val countingCallback: (ExtractorLink) -> Unit = { link ->
+        before.incrementAndGet()
+        Log.d(
+            "HanimeTV",
+            "resolveViaPlayerIframe: extractor link source=${link.source} url=${link.url.take(80)}",
+        )
+        callback(link)
+    }
+    return try {
+        loadExtractor(iframeUrl, referer, subtitleCallback, countingCallback)
+        val n = before.get()
+        Log.d("HanimeTV", "resolveViaPlayerIframe: produced $n links")
+        n > 0
+    } catch (t: Throwable) {
+        Log.e("HanimeTV", "resolveViaPlayerIframe: threw", t)
+        false
+    }
 }
 
 /**
