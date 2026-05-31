@@ -64,7 +64,21 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
         return resolveStreamsFromHtml(data, callback)
     }
 
+    // Diagnostic: dump the raw manifest so we can see if hanime.tv is returning
+    // real CDN URLs or just guest stubs. The full body is too large for one log
+    // line, so just slice the manifest section.
+    val manifestStart = response.text.indexOf("\"videos_manifest\"")
+    if (manifestStart >= 0) {
+        Log.d(
+            "HanimeTV",
+            "videos_manifest sample=${response.text.substring(manifestStart, (manifestStart + 1200).coerceAtMost(response.text.length))}",
+        )
+    } else {
+        Log.w("HanimeTV", "no videos_manifest key in API body")
+    }
+
     val linkCount = AtomicInteger(0)
+    val skippedStubs = AtomicInteger(0)
     manifest.servers.orEmpty().forEach { server ->
         val serverName = server.name?.takeIf { it.isNotBlank() } ?: "Hanime"
         server.streams.orEmpty().forEach { stream ->
@@ -73,6 +87,15 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
             // Skip explicitly guest-blocked premium streams (they 403 anyway).
             if (stream.isGuestAllowed == false) {
                 Log.d("HanimeTV", "skip premium-only stream height=${stream.height}")
+                return@forEach
+            }
+
+            // Skip the well-known guest-stub URL hanime.tv returns instead of
+            // real CDN links when you aren't logged in. The player would just
+            // crash with NETWORK_CONNECTION_FAILED on it.
+            if (url.contains("streamable.cloud/hls/stream.m3u8", ignoreCase = true)) {
+                skippedStubs.incrementAndGet()
+                Log.w("HanimeTV", "skip stub URL height=${stream.height} url=$url")
                 return@forEach
             }
 
@@ -112,8 +135,16 @@ internal suspend fun HanimetvProvider.resolveStreamLinks(
     }
 
     val total = linkCount.get()
-    Log.d("HanimeTV", "resolveStreamLinks: total $total links registered")
-    return total > 0
+    val stubs = skippedStubs.get()
+    Log.d("HanimeTV", "resolveStreamLinks: registered=$total stubs_skipped=$stubs")
+
+    // If the only thing the API gave us were guest stubs, fall back to the
+    // HTML page (NUXT blob sometimes leaks the real URLs).
+    if (total == 0) {
+        Log.w("HanimeTV", "API returned no real streams (likely guest-blocked), trying HTML")
+        return resolveStreamsFromHtml(data, callback)
+    }
+    return true
 }
 
 /**

@@ -276,6 +276,7 @@ class HanimetvProvider : MainAPI() {
                     TvType.NSFW,
                 ) {
                     this.posterUrl = poster
+                    this.posterHeaders = imageHeaders
                 }
             }
             android.util.Log.d(
