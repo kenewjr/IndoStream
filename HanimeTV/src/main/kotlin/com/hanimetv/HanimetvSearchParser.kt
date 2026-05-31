@@ -21,5 +21,6 @@ internal fun MainAPI.hentaiVideoToSearchResponse(video: HentaiVideo): AnimeSearc
 
     return newAnimeSearchResponse(title, href, TvType.NSFW) {
         this.posterUrl = poster
+        this.posterHeaders = imageHeaders
     }
 }

@@ -127,6 +127,7 @@ internal suspend fun HanimetvProvider.parseLoadPage(url: String): LoadResponse {
                     this.posterUrl =
                         v.coverUrl?.takeIf { it.isNotBlank() }
                             ?: v.posterUrl?.takeIf { it.isNotBlank() }
+                    this.posterHeaders = imageHeaders
                 }
             }
             .distinctBy { it.url }
@@ -135,6 +136,7 @@ internal suspend fun HanimetvProvider.parseLoadPage(url: String): LoadResponse {
     return newAnimeLoadResponse(title, url, TvType.NSFW) {
         engName = title
         posterUrl = poster
+        this.posterHeaders = imageHeaders
         this.year = year
         plot = description
         this.tags = tags

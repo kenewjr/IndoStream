@@ -21,6 +21,17 @@ internal val baseHeaders =
         "Origin" to DOMAIN,
     )
 
+// Hanime.tv image CDN requires a Referer of https://hanime.tv/ — without it
+// Glide/Coil get a 403 and the UI shows blank poster tiles. Pass these headers
+// to posterHeaders on every SearchResponse / LoadResponse that has an image.
+internal val imageHeaders =
+    mapOf(
+        "Referer" to "$DOMAIN/",
+        "User-Agent" to
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/124.0.0.0 Safari/537.36",
+    )
+
 internal val apiHeaders =
     mapOf(
         "User-Agent" to
