@@ -37,6 +37,41 @@ internal val ajaxHeaders =
 // Cloudflare-friendly cookie keys we may need to copy across requests
 internal val cfCookieNames = setOf("__cf_bm", "cf_clearance", "user_lang")
 
+// PROXY FIX: Public CORS/reverse proxies tried in order when hanime1.me
+// blocks the device IP (HTTP 403, no Cloudflare challenge).
+// Each entry is a URL prefix; the encoded target URL is appended.
+internal val proxyList =
+    listOf(
+        "https://api.allorigins.win/raw?url=",
+        "https://corsproxy.io/?",
+        "https://api.codetabs.com/v1/proxy?quest=",
+        "https://thingproxy.freeboard.io/fetch/",
+    )
+
+// PROXY FIX: Optional self-hosted Cloudflare Worker.
+// Deploy the worker shipped at Hanime1/cloudflare-worker.js on
+// https://workers.cloudflare.com (free tier) and paste its public URL here,
+// e.g. "https://hanime1-proxy.YOURUSER.workers.dev". Leave blank to disable.
+internal const val CF_WORKER_URL: String = ""
+
+// PROXY FIX: Optional user HTTP/SOCKS proxy. Leave host blank to disable.
+// Example: USER_PROXY_HOST = "127.0.0.1", USER_PROXY_PORT = 1080,
+// USER_PROXY_IS_SOCKS = true for a local Shadowsocks/Trojan client.
+internal const val USER_PROXY_HOST: String = ""
+internal const val USER_PROXY_PORT: Int = 0
+internal const val USER_PROXY_IS_SOCKS: Boolean = false
+
+// PROXY FIX: Headers sent to the proxy endpoint itself (not to hanime1.me).
+internal val proxyHeaders =
+    mapOf(
+        "User-Agent" to
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept" to "text/html,application/xhtml+xml,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.9",
+        "X-Requested-With" to "XMLHttpRequest",
+    )
+
 internal val backgroundImageRegex =
     Regex("""background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)""")
 

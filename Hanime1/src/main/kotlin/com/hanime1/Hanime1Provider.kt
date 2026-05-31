@@ -9,7 +9,6 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.nicehttp.NiceResponse
@@ -27,16 +26,50 @@ class Hanime1Provider : MainAPI() {
     override val mainPage = hanime1MainPage
 
     /**
-     * Wrapped GET with retries + plain-fallback. Mirrors Nekopoi.safeGet so
-     * intermittent Cloudflare blocks or socket resets don't kill a whole
-     * MainPage / search request.
+     * PROXY FIX: Hanime1.me returns HTTP 403 (no CF challenge) on direct
+     * requests from many mobile/residential IPs. We chain four strategies:
+     *   1. Direct GET with full browser headers + retries.
+     *   2. Public CORS/reverse proxies (allorigins, corsproxy.io, ...).
+     *   3. User-deployed Cloudflare Worker (if [CF_WORKER_URL] is set).
+     *   4. User-configured HTTP/SOCKS proxy (if [USER_PROXY_HOST] is set).
+     *
+     * Returns the first response that looks usable (HTTP 200..399, body length
+     * > a small threshold, no CF JS-challenge marker) or null on full failure.
      */
     internal suspend fun safeGet(
         url: String,
         referer: String? = "$mainUrl/",
         maxRetries: Int = 3,
     ): NiceResponse? {
-        var lastError: Throwable? = null
+        // METHOD 1 — direct request with browser-flavored headers.        // PROXY FIX
+        safeGetDirect(url, referer, maxRetries)?.let { return it }         // PROXY FIX
+
+        // METHOD 2 — public CORS/reverse proxy fan-out.                   // PROXY FIX
+        android.util.Log.w("Hanime1", "safeGet direct failed, trying public proxies for $url")
+        safeGetViaProxy(url)?.let { return it }                            // PROXY FIX
+
+        // METHOD 3 — user's Cloudflare Worker proxy.                      // PROXY FIX
+        if (CF_WORKER_URL.isNotBlank()) {                                  // PROXY FIX
+            android.util.Log.w("Hanime1", "safeGet proxies failed, trying CF Worker for $url")
+            safeGetViaWorker(url)?.let { return it }                       // PROXY FIX
+        }                                                                   // PROXY FIX
+
+        // METHOD 4 — user-configured HTTP/SOCKS proxy.                    // PROXY FIX
+        if (USER_PROXY_HOST.isNotBlank() && USER_PROXY_PORT > 0) {         // PROXY FIX
+            android.util.Log.w("Hanime1", "safeGet CF Worker failed, trying HTTP proxy for $url")
+            safeGetViaHttpProxy(url, referer)?.let { return it }           // PROXY FIX
+        }                                                                   // PROXY FIX
+
+        android.util.Log.e("Hanime1", "safeGet ALL methods failed: $url") // PROXY FIX
+        return null
+    }
+
+    /** PROXY FIX: Original direct-with-retries path, now extracted as a helper. */
+    private suspend fun safeGetDirect(
+        url: String,
+        referer: String?,
+        maxRetries: Int,
+    ): NiceResponse? {
         repeat(maxRetries) { attempt ->
             try {
                 val res = app.get(
@@ -46,42 +79,159 @@ class Hanime1Provider : MainAPI() {
                     timeout = 30L,
                 )
                 if (res.code in 200..399 && !looksLikeChallenge(res.text)) {
+                    android.util.Log.d("Hanime1", "safeGet direct OK code=${res.code} for $url")
                     return res
                 }
                 android.util.Log.w(
                     "Hanime1",
-                    "safeGet attempt ${attempt + 1}/$maxRetries got code=${res.code} " +
+                    "safeGet direct attempt ${attempt + 1}/$maxRetries got code=${res.code} " +
                         "len=${res.text.length} challenge=${looksLikeChallenge(res.text)} for $url",
                 )
             } catch (t: Throwable) {
-                lastError = t
                 android.util.Log.e(
                     "Hanime1",
-                    "safeGet attempt ${attempt + 1}/$maxRetries failed for $url: " +
+                    "safeGet direct attempt ${attempt + 1}/$maxRetries failed for $url: " +
                         "${t.javaClass.simpleName}: ${t.message}",
                 )
             }
             if (attempt < maxRetries - 1) delay(700L * (attempt + 1))
         }
+        return null
+    }
 
-        // Last-ditch: try without our extra headers (some CF-routes prefer minimal request)
-        try {
-            android.util.Log.w("Hanime1", "safeGet falling back to plain app.get for $url")
-            val res = app.get(url, timeout = 30L)
-            if (res.code in 200..399 && !looksLikeChallenge(res.text)) return res
-            android.util.Log.e(
-                "Hanime1",
-                "safeGet plain fallback unusable code=${res.code} len=${res.text.length} for $url",
+    /**
+     * PROXY FIX (Method 2): Try each public proxy in [proxyList] in order. The
+     * target URL is URL-encoded and appended; we accept the response only if it
+     * looks like real hanime1 HTML (>500 bytes, not a challenge page).
+     */
+    private suspend fun safeGetViaProxy(url: String): NiceResponse? {
+        val encoded = java.net.URLEncoder.encode(url, "UTF-8")
+        for (proxy in proxyList) {
+            val proxyUrl = "$proxy$encoded"
+            try {
+                val res = app.get(proxyUrl, headers = proxyHeaders, timeout = 20L)
+                if (res.code == 200 &&
+                    res.text.length > 500 &&
+                    !looksLikeChallenge(res.text)
+                ) {
+                    android.util.Log.d("Hanime1", "safeGet proxy OK: $proxy for $url")
+                    return res
+                }
+                android.util.Log.w(
+                    "Hanime1",
+                    "safeGet proxy code=${res.code} len=${res.text.length}: $proxy",
+                )
+            } catch (t: Throwable) {
+                android.util.Log.w(
+                    "Hanime1",
+                    "safeGet proxy error: $proxy → ${t.javaClass.simpleName}: ${t.message}",
+                )
+            }
+        }
+        return null
+    }
+
+    /**
+     * PROXY FIX (Method 3): Forward through the user's Cloudflare Worker.
+     * Worker contract: GET {CF_WORKER_URL}?url=<encoded hanime1 url> returns
+     * the upstream response body verbatim (see Hanime1/cloudflare-worker.js).
+     */
+    private suspend fun safeGetViaWorker(url: String): NiceResponse? {
+        if (CF_WORKER_URL.isBlank()) return null
+        return try {
+            val workerUrl = "$CF_WORKER_URL?url=${java.net.URLEncoder.encode(url, "UTF-8")}"
+            val res = app.get(
+                workerUrl,
+                headers = mapOf(
+                    "User-Agent" to
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                ),
+                timeout = 25L,
             )
+            if (res.code == 200 &&
+                res.text.length > 500 &&
+                !looksLikeChallenge(res.text)
+            ) {
+                android.util.Log.d("Hanime1", "safeGet CF Worker OK for $url")
+                res
+            } else {
+                android.util.Log.w(
+                    "Hanime1",
+                    "safeGet CF Worker code=${res.code} len=${res.text.length} for $url",
+                )
+                null
+            }
         } catch (t: Throwable) {
             android.util.Log.e(
                 "Hanime1",
-                "safeGet plain fallback failed for $url: ${t.javaClass.simpleName}: ${t.message}",
-                t,
+                "safeGet CF Worker failed for $url: ${t.javaClass.simpleName}: ${t.message}",
             )
+            null
         }
-        logError(lastError ?: Exception("Hanime1 safeGet failed: $url"))
-        return null
+    }
+
+    /**
+     * PROXY FIX (Method 4): Route the request through a user-configured HTTP
+     * or SOCKS proxy. We build a short-lived OkHttpClient with the proxy and
+     * adapt the okhttp3.Response into a NiceResponse so callers stay agnostic.
+     */
+    private suspend fun safeGetViaHttpProxy(
+        url: String,
+        referer: String?,
+    ): NiceResponse? {
+        if (USER_PROXY_HOST.isBlank() || USER_PROXY_PORT <= 0) return null
+        return try {
+            val proxyType =
+                if (USER_PROXY_IS_SOCKS) java.net.Proxy.Type.SOCKS
+                else java.net.Proxy.Type.HTTP
+            val proxy = java.net.Proxy(
+                proxyType,
+                java.net.InetSocketAddress(USER_PROXY_HOST, USER_PROXY_PORT),
+            )
+            val client = okhttp3.OkHttpClient.Builder()
+                .proxy(proxy)
+                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .followRedirects(true)
+                .build()
+
+            val requestBuilder = okhttp3.Request.Builder().url(url).get()
+            baseHeaders.forEach { (k, v) -> requestBuilder.header(k, v) }
+            if (!referer.isNullOrBlank()) requestBuilder.header("Referer", referer)
+
+            val raw = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                client.newCall(requestBuilder.build()).execute()
+            }
+            try {
+                val nice = com.lagradost.nicehttp.NiceResponse(raw, parser = null)
+                if (raw.code in 200..399 &&
+                    nice.text.length > 500 &&
+                    !looksLikeChallenge(nice.text)
+                ) {
+                    android.util.Log.d(
+                        "Hanime1",
+                        "safeGet HTTP proxy OK code=${raw.code} for $url",
+                    )
+                    nice
+                } else {
+                    android.util.Log.w(
+                        "Hanime1",
+                        "safeGet HTTP proxy code=${raw.code} len=${nice.text.length} for $url",
+                    )
+                    null
+                }
+            } catch (t: Throwable) {
+                raw.close()
+                throw t
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e(
+                "Hanime1",
+                "safeGet HTTP proxy failed for $url: ${t.javaClass.simpleName}: ${t.message}",
+            )
+            null
+        }
     }
 
     private fun looksLikeChallenge(body: String): Boolean {
