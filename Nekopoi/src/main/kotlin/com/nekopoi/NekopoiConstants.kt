@@ -39,7 +39,7 @@ internal val backgroundImageRegex =
 
 internal val nekopoiMainPage: List<MainPageData> =
     mainPageOf(
-        "$DOMAIN/?orderby=terbaru" to "🆕 Terbaru",
+        "$DOMAIN/" to "🆕 Terbaru",
         "$DOMAIN/category/hentai/" to "🔞 Hentai",
         "$DOMAIN/category/jav/" to "📺 JAV",
         "$DOMAIN/category/3d-hentai/" to "🎭 3D Hentai",
